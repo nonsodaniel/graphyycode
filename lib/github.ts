@@ -6,6 +6,7 @@ export interface RepoInfo {
   language: string | null;
   stars: number;
   forks: number;
+  defaultBranch: string;
 }
 
 /**
@@ -59,5 +60,6 @@ export async function fetchRepoInfo(owner: string, name: string): Promise<RepoIn
     language: data.language ?? null,
     stars: data.stargazers_count ?? 0,
     forks: data.forks_count ?? 0,
+    defaultBranch: data.default_branch ?? "main",
   };
 }
