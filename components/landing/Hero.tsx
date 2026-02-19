@@ -23,15 +23,8 @@ export function Hero() {
 
   return (
     <section className="relative min-h-[90vh] flex items-center justify-center px-4 pt-16 overflow-hidden">
-      {/* Subtle grid background */}
-      <div
-        className="absolute inset-0 pointer-events-none"
-        style={{
-          backgroundImage:
-            "linear-gradient(rgba(42,42,46,0.3) 1px, transparent 1px), linear-gradient(90deg, rgba(42,42,46,0.3) 1px, transparent 1px)",
-          backgroundSize: "40px 40px",
-        }}
-      />
+      {/* Subtle grid background — adapts to theme via globals.css */}
+      <div className="absolute inset-0 pointer-events-none hero-grid" />
 
       <div className="relative max-w-4xl mx-auto text-center">
         {/* Badge */}
@@ -39,7 +32,7 @@ export function Hero() {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.4 }}
-          className="inline-flex items-center gap-2 border border-[#2A2A2E] bg-[#111114] rounded-full px-3 py-1 text-xs text-[#8A8A9A] mb-8"
+          className="inline-flex items-center gap-2 border border-border bg-surface rounded-full px-3 py-1 text-xs text-muted-foreground mb-8"
         >
           <Github className="w-3 h-3" />
           Supports public GitHub repositories
@@ -50,7 +43,7 @@ export function Hero() {
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.1 }}
-          className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white tracking-tight leading-tight mb-6"
+          className="text-4xl sm:text-5xl lg:text-6xl font-bold text-foreground tracking-tight leading-tight mb-6"
         >
           Understand any codebase
           <br />
@@ -62,7 +55,7 @@ export function Hero() {
           initial={{ opacity: 0, y: 15 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.5, delay: 0.2 }}
-          className="text-lg text-[#8A8A9A] max-w-2xl mx-auto mb-10"
+          className="text-lg text-muted-foreground max-w-2xl mx-auto mb-10"
         >
           Paste a GitHub URL and instantly get an interactive dependency graph,
           folder tree, and file-by-file explanations. No setup required.
@@ -102,9 +95,9 @@ export function Hero() {
             onClick={() => {
               document.getElementById("demo")?.scrollIntoView({ behavior: "smooth" });
             }}
-            className="inline-flex items-center gap-2 text-sm text-[#8A8A9A] hover:text-white transition-colors"
+            className="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
           >
-            <div className="w-6 h-6 rounded-full border border-[#2A2A2E] flex items-center justify-center">
+            <div className="w-6 h-6 rounded-full border border-border flex items-center justify-center">
               <Play className="w-3 h-3 fill-current" />
             </div>
             See demo

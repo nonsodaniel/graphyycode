@@ -86,6 +86,19 @@ body {
   background: var(--muted-foreground);
 }
 
+/* Hero grid background — adapts to theme */
+.hero-grid {
+  background-image:
+    linear-gradient(rgba(0, 0, 0, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+.dark .hero-grid {
+  background-image:
+    linear-gradient(rgba(42, 42, 46, 0.35) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(42, 42, 46, 0.35) 1px, transparent 1px);
+}
+
 /* ReactFlow overrides */
 .react-flow__background {
   background-color: var(--surface) !important;
