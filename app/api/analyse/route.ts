@@ -1,4 +1,4 @@
-import { NextRequest, NextResponse } from "next/server";
+import { NextRequest, NextResponse, after } from "next/server";
 import { auth } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { checkAndIncrementGuestUsage, GUEST_LIMIT } from "@/lib/guest";
@@ -32,18 +32,36 @@ function ghHeaders(): Record<string, string> {
   return h;
 }
 
-async function fetchTree(owner: string, repo: string) {
-  const headers = ghHeaders();
-  const repoRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers });
-  if (!repoRes.ok) throw new Error(`GitHub API error: ${repoRes.status}`);
-  const repoData = await repoRes.json() as { default_branch?: string };
-  const branch = repoData.default_branch ?? "main";
+function githubError(status: number, context: string): Error {
+  if (status === 403) return new Error("GitHub API rate limit exceeded — add a GITHUB_TOKEN to your environment");
+  if (status === 404) return new Error(`Repository not found (${context})`);
+  if (status === 401) return new Error("GitHub authentication failed — check your GITHUB_TOKEN");
+  return new Error(`GitHub API error ${status} (${context})`);
+}
 
-  const treeRes = await fetch(
+async function fetchTree(owner: string, repo: string, defaultBranch = "main") {
+  const headers = ghHeaders();
+
+  // Try the provided branch first; fall back to fetching repo info only when needed
+  let branch = defaultBranch;
+  let treeRes = await fetch(
     `https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`,
     { headers }
   );
-  if (!treeRes.ok) throw new Error(`GitHub tree error: ${treeRes.status}`);
+
+  // If the branch guess was wrong (404), fetch repo to get the real default branch
+  if (treeRes.status === 404) {
+    const repoRes = await fetch(`https://api.github.com/repos/${owner}/${repo}`, { headers });
+    if (!repoRes.ok) throw githubError(repoRes.status, "repo info");
+    const repoData = await repoRes.json() as { default_branch?: string };
+    branch = repoData.default_branch ?? "main";
+    treeRes = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/git/trees/${branch}?recursive=1`,
+      { headers }
+    );
+  }
+
+  if (!treeRes.ok) throw githubError(treeRes.status, "tree");
   const treeData = await treeRes.json() as { tree: Array<{ path?: string; type?: string; size?: number }> };
 
   return treeData.tree.filter(
@@ -76,11 +94,11 @@ async function fetchFile(owner: string, repo: string, path: string): Promise<str
   }
 }
 
-async function runAnalysis(analysisId: string, owner: string, repoName: string) {
+async function runAnalysis(analysisId: string, owner: string, repoName: string, defaultBranch = "main") {
   await db.analysis.update({ where: { id: analysisId }, data: { status: "PROCESSING" } });
 
   try {
-    const treeItems = await fetchTree(owner, repoName);
+    const treeItems = await fetchTree(owner, repoName, defaultBranch);
     const toProcess = treeItems.slice(0, MAX_FILES);
 
     // Fetch all file contents in parallel
@@ -205,13 +223,13 @@ export async function POST(req: NextRequest) {
       });
     }
 
-    // ── Process inline (replaces separate worker) ──────────────────────────
-    await runAnalysis(analysis.id, repo.owner, repo.name);
-    // ──────────────────────────────────────────────────────────────────────
+    // Run analysis after the response is sent so the request doesn't time out.
+    // after() keeps the Vercel function alive until the work finishes (within maxDuration).
+    after(() => runAnalysis(analysis.id, repo.owner, repo.name, repoInfo.defaultBranch).catch(console.error));
 
     return NextResponse.json({
       analysisId: analysis.id,
-      status: "PENDING", // client polls once and gets COMPLETED
+      status: "PENDING",
       repo: {
         owner: repo.owner, name: repo.name, fullName: repo.fullName,
         description: repo.description, language: repo.language,
