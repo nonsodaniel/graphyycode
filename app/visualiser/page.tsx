@@ -31,6 +31,9 @@ interface AnalysisData {
     name: string;
     fullName: string;
     language?: string;
+    description?: string;
+    stars?: number;
+    forks?: number;
   };
   artifact?: {
     nodes: GraphNode[];
@@ -378,7 +381,7 @@ function VisualiserContent() {
         <div
           className={`
             ${tab !== "explain" ? "hidden md:block" : "flex-1 md:flex-none"}
-            md:w-72 border-l border-[#2A2A2E] bg-[#0B0B0C] overflow-hidden
+            md:w-80 border-l border-[#2A2A2E] bg-[#0B0B0C] overflow-hidden
           `}
         >
           <ExplainPanel
@@ -388,7 +391,7 @@ function VisualiserContent() {
             outgoingCount={outgoingCount}
             edges={analysis?.artifact?.edges ?? []}
             nodes={analysis?.artifact?.nodes ?? []}
-            repo={analysis?.repo ? { owner: analysis.repo.owner, name: analysis.repo.name, fullName: analysis.repo.fullName, language: analysis.repo.language } : null}
+            repo={analysis?.repo ? { owner: analysis.repo.owner, name: analysis.repo.name, fullName: analysis.repo.fullName, language: analysis.repo.language, description: analysis.repo.description, stars: analysis.repo.stars, forks: analysis.repo.forks } : null}
             onNodeSelect={handleNodeSelect}
             totalNodes={analysis?.artifact?.nodes.length ?? 1}
           />

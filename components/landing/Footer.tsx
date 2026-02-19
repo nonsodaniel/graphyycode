@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { GitBranch, Github, Twitter } from "lucide-react";
+import { GitBranch, Twitter } from "lucide-react";
 
 export function Footer() {
   const year = new Date().getFullYear();
@@ -16,11 +16,10 @@ export function Footer() {
             </Link>
             <p className="text-xs text-muted-foreground max-w-xs leading-relaxed">A codebase visualiser for developers. Understand any GitHub repository in minutes.</p>
             <div className="flex items-center gap-3 mt-1">
-              <a href="https://github.com/nonsodaniel/graphyycode" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors" aria-label="GitHub"><Github className="w-4 h-4" /></a>
               <a href="https://twitter.com" target="_blank" rel="noopener noreferrer" className="text-muted-foreground hover:text-foreground transition-colors" aria-label="Twitter"><Twitter className="w-4 h-4" /></a>
             </div>
           </div>
-          <div className="grid grid-cols-2 sm:grid-cols-3 gap-8">
+          <div className="grid grid-cols-2 gap-8">
             <div>
               <p className="text-xs font-semibold text-foreground mb-3 uppercase tracking-wider">Product</p>
               <div className="flex flex-col gap-2">
@@ -35,14 +34,6 @@ export function Footer() {
                 {["Privacy", "Terms", "Cookies"].map((l) => (
                   <a key={l} href="#" className="text-xs text-muted-foreground hover:text-foreground transition-colors">{l}</a>
                 ))}
-              </div>
-            </div>
-            <div>
-              <p className="text-xs font-semibold text-foreground mb-3 uppercase tracking-wider">Open source</p>
-              <div className="flex flex-col gap-2">
-                <a href="https://github.com/nonsodaniel/graphyycode" className="text-xs text-muted-foreground hover:text-foreground transition-colors">GitHub</a>
-                <a href="https://github.com/nonsodaniel/graphyycode/issues" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Issues</a>
-                <a href="https://github.com/nonsodaniel/graphyycode/discussions" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Discussions</a>
               </div>
             </div>
           </div>
