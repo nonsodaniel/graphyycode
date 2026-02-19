@@ -1,50 +1,29 @@
 import { db } from "@/lib/db";
 
-export const GUEST_LIMIT = 5;
+export const GUEST_LIMIT = Infinity; // TODO: re-enable limit when ready
 
 export type GuestCheckResult =
   | { allowed: true; count: number }
   | { allowed: false; code: "GUEST_LIMIT_REACHED"; count: number };
 
 /**
- * Checks and increments guest usage.
- * Returns allowed=false when the limit has been exceeded.
+ * Tracks guest usage and always allows access (limit disabled).
  */
 export async function checkAndIncrementGuestUsage(
   deviceId: string,
   ipAddress?: string
 ): Promise<GuestCheckResult> {
-  const existing = await db.guestUsage.findUnique({
+  const record = await db.guestUsage.upsert({
     where: { deviceId },
-  });
-
-  if (!existing) {
-    // First use — create record
-    await db.guestUsage.create({
-      data: { deviceId, ipAddress, count: 1 },
-    });
-    return { allowed: true, count: 1 };
-  }
-
-  if (existing.count >= GUEST_LIMIT) {
-    return {
-      allowed: false,
-      code: "GUEST_LIMIT_REACHED",
-      count: existing.count,
-    };
-  }
-
-  // Increment
-  const updated = await db.guestUsage.update({
-    where: { deviceId },
-    data: {
+    create: { deviceId, ipAddress, count: 1 },
+    update: {
       count: { increment: 1 },
       lastUsedAt: new Date(),
-      ipAddress: ipAddress ?? existing.ipAddress,
+      ipAddress: ipAddress ?? undefined,
     },
   });
 
-  return { allowed: true, count: updated.count };
+  return { allowed: true, count: record.count };
 }
 
 /**
