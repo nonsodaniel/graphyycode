@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, Suspense } from "react";
+import { useState, useEffect, useCallback, useRef, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   Network,
@@ -16,6 +16,7 @@ import { GraphView } from "@/components/visualiser/GraphView";
 import { FileTree } from "@/components/visualiser/FileTree";
 import { ExplainPanel } from "@/components/visualiser/ExplainPanel";
 import { GuestLimitModal } from "@/components/visualiser/GuestLimitModal";
+import { ScreenshotButton } from "@/components/visualiser/ScreenshotButton";
 import type { GraphNode, GraphEdge, FileTreeNode } from "@/lib/graph-builder";
 
 type Tab = "graph" | "files" | "explain";
@@ -59,6 +60,7 @@ function VisualiserContent() {
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
   const [showGuestModal, setShowGuestModal] = useState(false);
+  const graphContainerRef = useRef<HTMLDivElement>(null);
 
   const pollAnalysis = useCallback(
     async (analysisId: string, guestDeviceId?: string) => {
@@ -201,6 +203,15 @@ function VisualiserContent() {
             <span className="text-xs text-red-400">Failed</span>
           ) : null}
         </div>
+
+        {/* Screenshot button — show when completed */}
+        {status === "completed" && (
+          <ScreenshotButton
+            targetRef={graphContainerRef}
+            analysisId={analysis?.id}
+            repoFullName={analysis?.repo?.fullName}
+          />
+        )}
       </div>
 
       {/* Mobile tab bar */}
@@ -243,7 +254,10 @@ function VisualiserContent() {
         </div>
 
         {/* Graph area */}
-        <div className={`flex-1 overflow-hidden ${tab !== "graph" ? "hidden md:block" : ""}`}>
+        <div
+          ref={graphContainerRef}
+          className={`flex-1 overflow-hidden ${tab !== "graph" ? "hidden md:block" : ""}`}
+        >
           {status === "idle" && !repoUrl && (
             <div className="h-full flex items-center justify-center text-center p-8">
               <div>
