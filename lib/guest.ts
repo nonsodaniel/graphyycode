@@ -1,6 +1,6 @@
 import { db } from "@/lib/db";
 
-export const GUEST_LIMIT = 3;
+export const GUEST_LIMIT = 5;
 
 export type GuestCheckResult =
   | { allowed: true; count: number }
