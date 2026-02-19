@@ -259,44 +259,44 @@ export function AnimationDemo() {
       timeoutsRef.current.push(id);
     };
 
-    // Step 0 → type URL character by character
-    t(800, () => {
+    // Step 0 → type URL character by character (80ms/char — visible, natural pace)
+    t(1000, () => {
       let i = 0;
-      const chars = DEMO_REPO.split("");
       const type = () => {
-        if (i < chars.length) {
+        if (i < DEMO_REPO.length) {
           setInputText(DEMO_REPO.slice(0, i + 1));
           i++;
-          const id = setTimeout(type, 55); // 55ms per char — readable typing pace
+          const id = setTimeout(type, 80);
           timeoutsRef.current.push(id);
         } else {
-          const id = setTimeout(() => setStep(1), 600);
+          const id = setTimeout(() => setStep(1), 1200);
           timeoutsRef.current.push(id);
         }
       };
       type();
     });
 
-    // Step 1 — show fetching for 3.5s
-    t(DEMO_REPO.length * 55 + 1400, () => setStep(2));
+    // Step 1 — show fetching for 8s
+    // offset = initial delay + typing duration + pause before step 1
+    t(DEMO_REPO.length * 80 + 2200 + 8000, () => setStep(2));
 
-    // Step 2 — show "building graph" for 3.5s
-    t(3500, () => setStep(3));
+    // Step 2 — show "building graph" for 7s
+    t(7000, () => setStep(3));
 
-    // Step 3 — graph is ready; let user read for 2.5s then auto-select a node
-    t(2500, () => {
+    // Step 3 — graph is ready; let user admire it for 5s then auto-select a node
+    t(5000, () => {
       setActiveNode("app");
       setStep(4);
     });
 
-    // Step 4 — show file explanation for 4s
-    t(4000, () => setStep(5));
+    // Step 4 — show file explanation panel for 7s
+    t(7000, () => setStep(5));
 
-    // Step 5 — flash screenshot after 1s
+    // Step 5 — flash screenshot indicator after 1s
     t(1000, () => setScreenshotDone(true));
 
-    // Hold on step 5 for 4s so user can read, then restart loop
-    t(4000, () => {
+    // Hold on step 5 for 6s so user can read, then restart loop
+    t(6000, () => {
       setStep(0);
       setActiveNode(null);
       setInputText("");
@@ -468,8 +468,8 @@ export function AnimationDemo() {
                           <motion.div
                             className="h-full bg-blue-600 rounded-full"
                             initial={{ width: "0%" }}
-                            animate={{ width: "80%" }}
-                            transition={{ duration: 2, ease: "easeInOut" }}
+                            animate={{ width: "85%" }}
+                            transition={{ duration: 7, ease: "easeInOut" }}
                           />
                         </div>
                       </motion.div>

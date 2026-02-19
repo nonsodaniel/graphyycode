@@ -3,8 +3,10 @@
 import { useState, useEffect } from "react";
 import Link from "next/link";
 import { motion, AnimatePresence } from "framer-motion";
-import { GitBranch, Menu, X } from "lucide-react";
+import { GitBranch, Menu, X, Sun, Moon } from "lucide-react";
+import { useTheme } from "next-themes";
 import { cn } from "@/lib/utils";
+
 
 const navLinks = [
   { href: "#features", label: "Features" },
@@ -12,6 +14,27 @@ const navLinks = [
   { href: "#top-repos", label: "Top repos" },
   { href: "#faq", label: "FAQ" },
 ];
+
+function ThemeToggle() {
+  const { resolvedTheme, setTheme } = useTheme();
+
+  // resolvedTheme is undefined during SSR — avoid hydration mismatch
+  if (!resolvedTheme) return <div className="w-8 h-8" />;
+
+  return (
+    <button
+      onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+      className="p-2 rounded-md text-[#8A8A9A] hover:text-foreground hover:bg-muted transition-colors"
+      aria-label="Toggle theme"
+    >
+      {resolvedTheme === "dark" ? (
+        <Sun className="w-4 h-4" />
+      ) : (
+        <Moon className="w-4 h-4" />
+      )}
+    </button>
+  );
+}
 
 export function Navbar() {
   const [scrolled, setScrolled] = useState(false);
@@ -27,12 +50,14 @@ export function Navbar() {
     <header
       className={cn(
         "fixed top-0 left-0 right-0 z-50 transition-all duration-300",
-        scrolled ? "bg-[#0B0B0C]/95 border-b border-[#2A2A2E] backdrop-blur-sm" : "bg-transparent"
+        scrolled
+          ? "bg-background/95 border-b border-border backdrop-blur-sm"
+          : "bg-transparent"
       )}
     >
       <nav className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
         {/* Logo */}
-        <Link href="/" className="flex items-center gap-2 text-white font-semibold text-lg">
+        <Link href="/" className="flex items-center gap-2 text-foreground font-semibold text-lg">
           <div className="w-8 h-8 bg-blue-600 rounded-md flex items-center justify-center">
             <GitBranch className="w-4 h-4 text-white" />
           </div>
@@ -45,18 +70,19 @@ export function Navbar() {
             <a
               key={link.href}
               href={link.href}
-              className="text-sm text-[#8A8A9A] hover:text-white transition-colors"
+              className="text-sm text-muted-foreground hover:text-foreground transition-colors"
             >
               {link.label}
             </a>
           ))}
         </div>
 
-        {/* CTA */}
-        <div className="hidden md:flex items-center gap-3">
+        {/* CTA + Theme toggle */}
+        <div className="hidden md:flex items-center gap-2">
+          <ThemeToggle />
           <Link
             href="/auth/signin"
-            className="inline-flex items-center justify-center h-8 px-3 text-xs font-medium text-white rounded-md transition-colors hover:bg-[#111114]"
+            className="inline-flex items-center justify-center h-8 px-3 text-xs font-medium text-foreground rounded-md transition-colors hover:bg-muted"
           >
             Sign in
           </Link>
@@ -68,14 +94,17 @@ export function Navbar() {
           </Link>
         </div>
 
-        {/* Mobile menu toggle */}
-        <button
-          className="md:hidden text-white p-2"
-          onClick={() => setMenuOpen((v) => !v)}
-          aria-label="Toggle menu"
-        >
-          {menuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
-        </button>
+        {/* Mobile controls */}
+        <div className="md:hidden flex items-center gap-1">
+          <ThemeToggle />
+          <button
+            className="text-foreground p-2"
+            onClick={() => setMenuOpen((v) => !v)}
+            aria-label="Toggle menu"
+          >
+            {menuOpen ? <X className="w-5 h-5" /> : <Menu className="w-5 h-5" />}
+          </button>
+        </div>
       </nav>
 
       {/* Mobile menu */}
@@ -86,23 +115,23 @@ export function Navbar() {
             animate={{ opacity: 1, height: "auto" }}
             exit={{ opacity: 0, height: 0 }}
             transition={{ duration: 0.2 }}
-            className="md:hidden border-t border-[#2A2A2E] bg-[#0B0B0C]"
+            className="md:hidden border-t border-border bg-background"
           >
             <div className="px-4 py-4 flex flex-col gap-3">
               {navLinks.map((link) => (
                 <a
                   key={link.href}
                   href={link.href}
-                  className="text-sm text-[#8A8A9A] hover:text-white transition-colors py-1"
+                  className="text-sm text-muted-foreground hover:text-foreground transition-colors py-1"
                   onClick={() => setMenuOpen(false)}
                 >
                   {link.label}
                 </a>
               ))}
-              <div className="pt-2 flex flex-col gap-2 border-t border-[#2A2A2E]">
+              <div className="pt-2 flex flex-col gap-2 border-t border-border">
                 <Link
                   href="/auth/signin"
-                  className="inline-flex items-center justify-center h-8 px-3 text-sm font-medium text-white border border-[#2A2A2E] rounded-md transition-colors hover:bg-[#111114]"
+                  className="inline-flex items-center justify-center h-8 px-3 text-sm font-medium text-foreground border border-border rounded-md transition-colors hover:bg-muted"
                 >
                   Sign in
                 </Link>
