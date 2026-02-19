@@ -69,28 +69,38 @@ function VisualiserContent() {
 
       const poll = async () => {
         attempts++;
-        const url = new URL(`/api/analysis/${analysisId}`, window.location.origin);
-        if (guestDeviceId) url.searchParams.set("guestId", guestDeviceId);
+        try {
+          const url = new URL(`/api/analysis/${analysisId}`, window.location.origin);
+          if (guestDeviceId) url.searchParams.set("guestId", guestDeviceId);
 
-        const res = await fetch(url.toString());
-        const data: AnalysisData = await res.json();
+          const res = await fetch(url.toString());
+          if (!res.ok) {
+            setError("Could not fetch analysis status");
+            setStatus("failed");
+            return;
+          }
+          const data: AnalysisData = await res.json();
 
-        if (data.status === "COMPLETED" && data.artifact) {
-          setAnalysis(data);
-          setStatus("completed");
-          return;
-        }
+          if (data.status === "COMPLETED" && data.artifact) {
+            setAnalysis(data);
+            setStatus("completed");
+            return;
+          }
 
-        if (data.status === "FAILED") {
-          setError("Analysis failed");
-          setStatus("failed");
-          return;
-        }
+          if (data.status === "FAILED") {
+            setError("Analysis failed");
+            setStatus("failed");
+            return;
+          }
 
-        if (attempts < maxAttempts) {
-          setTimeout(poll, 3000);
-        } else {
-          setError("Analysis timed out");
+          if (attempts < maxAttempts) {
+            setTimeout(poll, 3000);
+          } else {
+            setError("Analysis timed out — the worker may not be running");
+            setStatus("failed");
+          }
+        } catch {
+          setError("Network error while polling for results");
           setStatus("failed");
         }
       };
@@ -113,28 +123,40 @@ function VisualiserContent() {
       // localStorage not available (SSR safety)
     }
 
-    const res = await fetch("/api/analyse", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ repoUrl, guestDeviceId }),
-    });
+    try {
+      const res = await fetch("/api/analyse", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ repoUrl, guestDeviceId }),
+      });
 
-    const data = await res.json();
-
-    if (!res.ok) {
-      if (data.code === "GUEST_LIMIT_REACHED") {
-        setShowGuestModal(true);
-        setStatus("idle");
+      let data: Record<string, unknown> = {};
+      try {
+        data = await res.json();
+      } catch {
+        setError("Server error — check that DATABASE_URL is configured");
+        setStatus("failed");
         return;
       }
-      setError(data.error ?? "Analysis failed");
-      setStatus("failed");
-      return;
-    }
 
-    setAnalysis(data);
-    setStatus("processing");
-    pollAnalysis(data.analysisId, guestDeviceId);
+      if (!res.ok) {
+        if (data.code === "GUEST_LIMIT_REACHED") {
+          setShowGuestModal(true);
+          setStatus("idle");
+          return;
+        }
+        setError((data.error as string) ?? "Analysis failed");
+        setStatus("failed");
+        return;
+      }
+
+      setAnalysis(data as unknown as AnalysisData);
+      setStatus("processing");
+      pollAnalysis((data.analysisId as string), guestDeviceId);
+    } catch {
+      setError("Network error — could not reach the server");
+      setStatus("failed");
+    }
   }, [repoUrl, pollAnalysis]);
 
   useEffect(() => {
