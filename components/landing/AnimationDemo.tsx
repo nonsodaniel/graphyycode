@@ -318,8 +318,8 @@ export function AnimationDemo() {
           <p className="text-xs text-blue-500 font-semibold uppercase tracking-widest mb-3">
             Interactive Demo
           </p>
-          <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">See it in action</h2>
-          <p className="text-[#8A8A9A] max-w-xl mx-auto text-sm">
+          <h2 className="text-3xl sm:text-4xl font-bold text-foreground mb-4">See it in action</h2>
+          <p className="text-muted-foreground max-w-xl mx-auto text-sm">
             Watch GraphyyCode analyse a real repository — or click any step to jump to it.
           </p>
         </div>
