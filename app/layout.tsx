@@ -1,6 +1,8 @@
 import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import { OfflineBanner } from "@/components/shared/OfflineBanner";
+import { ServiceWorkerRegistrar } from "@/components/shared/ServiceWorkerRegistrar";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -52,6 +54,8 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased bg-[#0B0B0C] text-white`}
       >
+        <ServiceWorkerRegistrar />
+        <OfflineBanner />
         {children}
       </body>
     </html>

@@ -1,0 +1,37 @@
+{
+  "name": "GraphyyCode",
+  "short_name": "GraphyyCode",
+  "description": "Codebase Visualiser — Understand any GitHub repository in minutes",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0B0B0C",
+  "theme_color": "#0B0B0C",
+  "orientation": "any",
+  "categories": ["developer", "productivity", "utilities"],
+  "icons": [
+    {
+      "src": "/icons/icon-192x192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any maskable"
+    },
+    {
+      "src": "/icons/icon-512x512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ],
+  "shortcuts": [
+    {
+      "name": "Dashboard",
+      "url": "/dashboard",
+      "description": "View your analysis history"
+    },
+    {
+      "name": "New Analysis",
+      "url": "/?new=1",
+      "description": "Analyse a new repository"
+    }
+  ]
+}
