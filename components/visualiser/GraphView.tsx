@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState, useMemo, useEffect } from "react";
+import { useCallback, useState, useMemo, useEffect, useRef } from "react";
 import ReactFlow, {
   Background,
   Controls,
@@ -29,6 +29,7 @@ import {
   Maximize2,
   Network,
   GitBranch,
+  Zap,
 } from "lucide-react";
 import type { GraphNode, GraphEdge } from "@/lib/graph-builder";
 
@@ -60,6 +61,13 @@ const LANG_COLORS: Record<string, string> = {
 
 // ─── Custom node: file/folder ─────────────────────────────────────────────────
 
+const IMPACT_STYLES: Record<number, { border: string; bg: string; text: string; dot: string; glow: string; badge: string; badgeBg: string }> = {
+  1: { border: "border-red-500/80", bg: "bg-red-500/15", text: "text-red-200", dot: "#ef4444", glow: "#ef444450", badge: "direct", badgeBg: "bg-red-500/20 text-red-400" },
+  2: { border: "border-orange-400/70", bg: "bg-orange-400/12", text: "text-orange-200", dot: "#f97316", glow: "#f9731650", badge: "+2", badgeBg: "bg-orange-400/20 text-orange-400" },
+  3: { border: "border-amber-400/55", bg: "bg-amber-400/10", text: "text-amber-200/85", dot: "#eab308", glow: "#eab30840", badge: "+3", badgeBg: "bg-amber-400/20 text-amber-400" },
+};
+const IMPACT_FAR = { border: "border-amber-400/40", bg: "bg-amber-400/8", text: "text-amber-300/70", dot: "#ca8a04", glow: "#ca8a0430", badge: "far", badgeBg: "bg-amber-400/15 text-amber-500" };
+
 function CustomNode({
   data,
 }: {
@@ -70,10 +78,14 @@ function CustomNode({
     role?: string;
     selected?: boolean;
     dimmed?: boolean;
+    impactLevel?: number; // blast radius: 1=direct importer, 2=2hops, etc.
   };
 }) {
   const isFolder = data.type === "folder";
   const langColor = data.language ? (LANG_COLORS[data.language] ?? null) : null;
+  const impact = data.impactLevel !== undefined
+    ? (IMPACT_STYLES[Math.min(data.impactLevel, 3)] ?? IMPACT_FAR)
+    : null;
 
   return (
     <>
@@ -85,6 +97,8 @@ function CustomNode({
           ${
             data.selected
               ? "border-blue-400 bg-blue-500/25 text-white shadow-lg shadow-blue-500/25 ring-1 ring-blue-400/40"
+              : impact
+              ? `${impact.border} ${impact.bg} ${impact.text}`
               : data.dimmed
               ? "border-[#1E1E26] bg-[#0D0D12] text-[#2E2E3A]"
               : "border-[#38384A] bg-[#16161E] text-[#D0D0E0] hover:border-[#5050A0] hover:bg-[#1E1E2A] hover:text-white"
@@ -93,18 +107,24 @@ function CustomNode({
         title={data.role ?? data.label}
         style={{ maxWidth: 240 }}
       >
-        {langColor && !data.dimmed && (
-          <span
-            className="w-2 h-2 rounded-full shrink-0 opacity-90"
-            style={{ background: langColor, boxShadow: `0 0 6px ${langColor}60` }}
-          />
-        )}
+        {/* Impact level dot (replaces lang dot in blast mode) */}
+        {impact ? (
+          <span className="w-2 h-2 rounded-full shrink-0 animate-pulse" style={{ background: impact.dot, boxShadow: `0 0 6px ${impact.glow}` }} />
+        ) : langColor && !data.dimmed ? (
+          <span className="w-2 h-2 rounded-full shrink-0 opacity-90" style={{ background: langColor, boxShadow: `0 0 6px ${langColor}60` }} />
+        ) : null}
         {isFolder ? (
           <Folder className="w-3.5 h-3.5 text-yellow-300 shrink-0" />
         ) : (
-          !langColor && <FileCode className="w-3.5 h-3.5 text-[#6878A8] shrink-0" />
+          !langColor && !impact && <FileCode className="w-3.5 h-3.5 text-[#6878A8] shrink-0" />
         )}
         <span className="truncate leading-tight">{data.label}</span>
+        {/* Impact hop badge */}
+        {impact && (
+          <span className={`ml-auto shrink-0 text-[8px] font-bold px-1.5 py-0.5 rounded ${impact.badgeBg}`}>
+            {impact.badge}
+          </span>
+        )}
       </div>
       <Handle type="source" position={Position.Bottom} style={{ opacity: 0, width: 1, height: 1, background: "transparent", border: "none", minWidth: 0, minHeight: 0 }} />
     </>
@@ -140,12 +160,31 @@ function buildConnectedSet(nodeId: string, edges: GraphEdge[]): Set<string> {
   return s;
 }
 
+// BFS on reversed graph: find every file that (directly or transitively) imports nodeId.
+// Returns a Map of nodeId → hop distance (0 = the node itself).
+function buildBlastRadius(nodeId: string, edges: GraphEdge[]): Map<string, number> {
+  const dist = new Map<string, number>();
+  const queue: [string, number][] = [[nodeId, 0]];
+  while (queue.length) {
+    const [id, d] = queue.shift()!;
+    if (dist.has(id)) continue;
+    dist.set(id, d);
+    for (const e of edges) {
+      if (e.target === id && !dist.has(e.source)) {
+        queue.push([e.source, d + 1]);
+      }
+    }
+  }
+  return dist;
+}
+
 function toGraphNodes(
   graphNodes: GraphNode[],
   selectedId: string | null | undefined,
   connectedIds: Set<string> | undefined,
   searchQuery: string,
-  langFilter: string | null
+  langFilter: string | null,
+  blastRadius?: Map<string, number>
 ): Node[] {
   const cols = Math.max(1, Math.ceil(Math.sqrt(graphNodes.length)));
   return graphNodes.map((n, i) => {
@@ -158,11 +197,18 @@ function toGraphNodes(
       n.language?.toLowerCase() === langFilter.toLowerCase();
     const hidden = !matchesSearch || !matchesLang;
     const isSelected = n.id === selectedId;
-    const isDimmed =
-      !isSelected &&
-      !!selectedId &&
-      connectedIds !== undefined &&
-      !connectedIds.has(n.id);
+
+    let isDimmed: boolean;
+    let impactLevel: number | undefined;
+
+    if (blastRadius) {
+      const d = blastRadius.get(n.id);
+      isDimmed = d === undefined;
+      impactLevel = d !== undefined && d > 0 ? d : undefined; // d=0 is the selected node itself
+    } else {
+      isDimmed = !isSelected && !!selectedId && connectedIds !== undefined && !connectedIds.has(n.id);
+      impactLevel = undefined;
+    }
 
     return {
       id: n.id,
@@ -176,6 +222,7 @@ function toGraphNodes(
         role: n.role,
         selected: isSelected,
         dimmed: isDimmed,
+        impactLevel,
       },
     };
   });
@@ -184,9 +231,31 @@ function toGraphNodes(
 function toGraphEdges(
   graphEdges: GraphEdge[],
   selectedId: string | null | undefined,
-  connectedIds: Set<string> | undefined
+  connectedIds: Set<string> | undefined,
+  blastRadius?: Map<string, number>
 ): Edge[] {
   return graphEdges.map((e) => {
+    if (blastRadius) {
+      const srcDist = blastRadius.get(e.source);
+      const tgtDist = blastRadius.get(e.target);
+      if (srcDist === undefined || tgtDist === undefined) {
+        return {
+          id: e.id, source: e.source, target: e.target,
+          style: { stroke: "#18181E", strokeWidth: 0.5, opacity: 0.12 },
+          type: "smoothstep",
+        };
+      }
+      // Color the edge by the lesser distance (closer to root = hotter color)
+      const d = Math.min(srcDist, tgtDist);
+      const color = d <= 1 ? "#ef4444" : d === 2 ? "#f97316" : "#eab308";
+      return {
+        id: e.id, source: e.source, target: e.target,
+        style: { stroke: color, strokeWidth: d <= 1 ? 2 : 1.5, opacity: 0.75 },
+        animated: d <= 1, // animate direct-import edges for emphasis
+        type: "smoothstep",
+      };
+    }
+
     const isHighlighted =
       selectedId && (e.source === selectedId || e.target === selectedId);
     const isDimmed =
@@ -591,6 +660,14 @@ function GraphViewInner({
   const [langFilter, setLangFilter] = useState<string | null>(null);
   const [showStats, setShowStats] = useState(false);
   const [viewMode, setViewMode] = useState<ViewMode>("graph");
+  const [blastMode, setBlastMode] = useState(false);
+
+  // Reset blast mode when selection changes
+  const prevSelected = useRef(selectedNodeId);
+  if (prevSelected.current !== selectedNodeId) {
+    prevSelected.current = selectedNodeId;
+    if (blastMode) setBlastMode(false);
+  }
 
   const connectedIds = useMemo(
     () =>
@@ -599,6 +676,13 @@ function GraphViewInner({
         : undefined,
     [selectedNodeId, graphEdges]
   );
+
+  const blastRadius = useMemo(
+    () => (blastMode && selectedNodeId) ? buildBlastRadius(selectedNodeId, graphEdges) : undefined,
+    [blastMode, selectedNodeId, graphEdges]
+  );
+
+  const blastImpactCount = blastRadius ? blastRadius.size - 1 : 0; // exclude the node itself
 
   const languages = useMemo(() => {
     const langs = new Set<string>();
@@ -617,10 +701,10 @@ function GraphViewInner({
       return [nodes, edges];
     }
     return [
-      toGraphNodes(graphNodes, selectedNodeId, connectedIds, search, langFilter),
-      toGraphEdges(graphEdges, selectedNodeId, connectedIds),
+      toGraphNodes(graphNodes, selectedNodeId, connectedIds, search, langFilter, blastRadius),
+      toGraphEdges(graphEdges, selectedNodeId, connectedIds, blastRadius),
     ];
-  }, [viewMode, graphNodes, selectedNodeId, connectedIds, search, langFilter, graphEdges]);
+  }, [viewMode, graphNodes, selectedNodeId, connectedIds, search, langFilter, graphEdges, blastRadius]);
 
   const [nodes, setNodes, onNodesChange] = useNodesState(rfNodes);
   const [edges, setEdges, onEdgesChange] = useEdgesState(rfEdges);
@@ -696,6 +780,22 @@ function GraphViewInner({
           {/* View toggle */}
           <ViewToggle mode={viewMode} onChange={setViewMode} />
 
+          {/* Blast radius toggle — only when a node is selected and in graph mode */}
+          {selectedNodeId && viewMode === "graph" && (
+            <button
+              onClick={() => setBlastMode((v) => !v)}
+              title="Show all files that will be affected if this file changes"
+              className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs border rounded-lg transition-colors font-medium ${
+                blastMode
+                  ? "border-red-500/60 bg-red-500/20 text-red-300 shadow-sm shadow-red-500/20"
+                  : "border-[#38384A] text-[#8888A8] hover:text-white bg-[#16161E] hover:border-red-500/50 hover:text-red-400"
+              }`}
+            >
+              <Zap className="w-3.5 h-3.5" />
+              {blastMode ? `Impact · ${blastImpactCount}` : "Impact"}
+            </button>
+          )}
+
           <button
             onClick={() => setShowStats((v) => !v)}
             className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs border rounded-lg transition-colors ${
@@ -718,6 +818,20 @@ function GraphViewInner({
           )}
         </div>
       </div>
+
+      {/* Blast radius legend */}
+      {blastMode && selectedNodeId && (
+        <div className="flex items-center gap-4 px-3 py-2 border-b border-red-900/40 bg-[#0E0808] shrink-0">
+          <span className="text-xs text-red-400/80 font-medium flex items-center gap-1.5">
+            <Zap className="w-3 h-3" />Change impact propagation
+          </span>
+          <div className="ml-auto flex items-center gap-4 text-xs">
+            <span className="flex items-center gap-1.5 text-red-400"><span className="w-3 h-3 rounded-full bg-red-500" />Direct (1 hop)</span>
+            <span className="flex items-center gap-1.5 text-orange-400"><span className="w-3 h-3 rounded-full bg-orange-400" />2 hops</span>
+            <span className="flex items-center gap-1.5 text-amber-400"><span className="w-3 h-3 rounded-full bg-amber-400" />3+ hops</span>
+          </div>
+        </div>
+      )}
 
       {/* Tree mode legend */}
       {viewMode === "tree" && (
@@ -779,12 +893,26 @@ function GraphViewInner({
           />
           <Panel
             position="bottom-left"
-            className="text-xs text-[#8888A8] bg-[#12121A] border border-[#38384A] rounded-lg px-3 py-1.5"
+            className={`text-xs rounded-lg px-3 py-1.5 border transition-colors ${
+              blastMode
+                ? "text-red-300 bg-[#1A0A0A] border-red-500/40"
+                : "text-[#8888A8] bg-[#12121A] border-[#38384A]"
+            }`}
           >
-            {search || langFilter
-              ? `${visibleNodeCount} of ${graphNodes.filter((n) => n.type !== "folder").length} files · ${graphEdges.length} deps`
-              : `${graphNodes.filter((n) => n.type !== "folder").length} files · ${graphEdges.length} deps`}
-            {selectedNodeId && (
+            {blastMode && blastRadius ? (
+              <>
+                <span className="font-semibold text-red-300">{blastImpactCount} file{blastImpactCount !== 1 ? "s" : ""} affected</span>
+                {" · "}
+                <span className="text-red-500/80">{[...blastRadius.entries()].filter(([, d]) => d === 1).length} direct</span>
+                {", "}
+                <span className="text-orange-500/80">{[...blastRadius.entries()].filter(([, d]) => d >= 2).length} indirect</span>
+              </>
+            ) : search || langFilter ? (
+              `${visibleNodeCount} of ${graphNodes.filter((n) => n.type !== "folder").length} files · ${graphEdges.length} deps`
+            ) : (
+              `${graphNodes.filter((n) => n.type !== "folder").length} files · ${graphEdges.length} deps`
+            )}
+            {selectedNodeId && !blastMode && (
               <span className="ml-2 text-[#6A6A7A]">
                 · <kbd className="font-mono">Esc</kbd> to clear
               </span>

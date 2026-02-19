@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef, ReactNode } from "react";
+import { useState, useEffect, useCallback, useRef, useMemo, ReactNode } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import {
   FileCode,
@@ -161,6 +161,64 @@ function parseSymbols(code: string) {
     todos,
     security,
   };
+}
+
+// ─── Graph traversal helpers ──────────────────────────────────────────────────
+
+// BFS from all entry points (no incoming edges) to find the shortest import path to targetId.
+// Returns an ordered array of node IDs: [entryPoint, ..., targetId], or [] if unreachable.
+function findImportPath(targetId: string, edges: GraphEdge[], nodes: GraphNode[]): string[] {
+  const hasIncoming = new Set(edges.map((e) => e.target));
+  const fileNodes = nodes.filter((n) => n.type !== "folder");
+  const entryIds = fileNodes.filter((n) => !hasIncoming.has(n.id)).map((n) => n.id);
+  if (entryIds.includes(targetId)) return [targetId]; // it IS an entry point
+
+  const parent = new Map<string, string | null>();
+  const queue: string[] = [];
+  for (const ep of entryIds.slice(0, 30)) { // cap for perf
+    parent.set(ep, null);
+    queue.push(ep);
+  }
+
+  let found = false;
+  outer: while (queue.length) {
+    const cur = queue.shift()!;
+    for (const e of edges) {
+      if (e.source === cur && !parent.has(e.target)) {
+        parent.set(e.target, cur);
+        if (e.target === targetId) { found = true; break outer; }
+        queue.push(e.target);
+      }
+    }
+  }
+
+  if (!found) return [];
+  const path: string[] = [];
+  let cur: string | null = targetId;
+  while (cur !== null) {
+    path.unshift(cur);
+    cur = parent.get(cur) ?? null;
+  }
+  return path;
+}
+
+// BFS backwards: all files that transitively import nodeId, with hop distance.
+function buildTransitiveDependents(
+  nodeId: string,
+  edges: GraphEdge[]
+): Array<{ id: string; distance: number }> {
+  const dist = new Map<string, number>();
+  const queue: [string, number][] = [[nodeId, 0]];
+  while (queue.length) {
+    const [id, d] = queue.shift()!;
+    if (dist.has(id)) continue;
+    dist.set(id, d);
+    for (const e of edges) {
+      if (e.target === id && !dist.has(e.source)) queue.push([e.source, d + 1]);
+    }
+  }
+  dist.delete(nodeId);
+  return [...dist.entries()].map(([id, distance]) => ({ id, distance })).sort((a, b) => a.distance - b.distance);
 }
 
 function complexityLabel(score: number): { label: string; color: string } {
@@ -512,6 +570,7 @@ export function ExplainPanel({
   const [code, setCode] = useState<string | null>(null);
   const [codeLoading, setCodeLoading] = useState(false);
   const [codeError, setCodeError] = useState<string | null>(null);
+  const [showAllDeps, setShowAllDeps] = useState(false);
 
   // AI state for file/snippet
   const [aiText, setAiText] = useState("");
@@ -754,6 +813,18 @@ export function ExplainPanel({
     // Directly trigger fetch — don't rely on useEffect
     fetchAiExplain("snippet", text);
   }, [fetchAiExplain]);
+
+  // Import chain from entry points to selected file
+  const importPath = useMemo(
+    () => node ? findImportPath(node.id, edges, nodes) : [],
+    [node?.id, edges, nodes] // eslint-disable-line react-hooks/exhaustive-deps
+  );
+
+  // All transitive dependents (files that import this, directly or indirectly)
+  const transitiveDependents = useMemo(
+    () => node ? buildTransitiveDependents(node.id, edges) : [],
+    [node?.id, edges] // eslint-disable-line react-hooks/exhaustive-deps
+  );
 
   // Derived data
   const importedNodes = edges
@@ -1148,6 +1219,13 @@ export function ExplainPanel({
                 {node.language}
               </span>
             )}
+            {importPath.length > 1 && (
+              <span className="text-[10px] px-1.5 py-0.5 rounded font-medium bg-[#1A1A2E] text-[#8888C8] border border-[#38386A]"
+                title={`${importPath.length - 1} hops from entry point`}
+              >
+                depth {importPath.length - 1}
+              </span>
+            )}
             {isHub && (
               <span className="flex items-center gap-1 text-[10px] px-1.5 py-0.5 rounded font-medium bg-yellow-500/10 text-yellow-400 border border-yellow-500/25">
                 <Star className="w-2.5 h-2.5" />Hub
@@ -1257,6 +1335,45 @@ export function ExplainPanel({
                     <p className="text-[11px] text-[#8A8A9A] mt-1 leading-relaxed">{roleDesc}</p>
                   )}
                 </div>
+
+                {/* Import chain — breadcrumb from entry point */}
+                {importPath.length > 1 && (
+                  <div className="bg-[#0E0E1A] border border-[#38386A] rounded-lg p-3">
+                    <p className="text-[9px] text-[#6868A8] uppercase tracking-widest mb-2 flex items-center gap-1.5">
+                      <ArrowRight className="w-2.5 h-2.5" />Source path
+                    </p>
+                    <div className="flex flex-col gap-0">
+                      {importPath.map((id: string, idx: number) => {
+                        const n = nodes.find((n) => n.id === id);
+                        const isLast = idx === importPath.length - 1;
+                        return (
+                          <div key={id} className="flex items-center gap-1.5">
+                            {/* Connector line */}
+                            <div className="flex flex-col items-center shrink-0" style={{ width: 16 }}>
+                              {idx > 0 && <div className="w-px h-2 bg-[#38386A]" />}
+                              <div className={`w-2 h-2 rounded-full border ${isLast ? "bg-blue-500 border-blue-400" : "bg-[#38384A] border-[#58588A]"}`} />
+                              {!isLast && <div className="w-px flex-1 bg-[#38386A]" style={{ minHeight: 6 }} />}
+                            </div>
+                            <button
+                              onClick={() => onNodeSelect?.(id)}
+                              className={`text-[10px] font-mono truncate max-w-full text-left leading-relaxed py-0.5 transition-colors ${
+                                isLast ? "text-blue-300 font-semibold" : "text-[#8888B8] hover:text-white"
+                              }`}
+                            >
+                              {n?.label ?? id}
+                            </button>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+                {importPath.length === 1 && (
+                  <div className="bg-[#0E0E1A] border border-[#38386A] rounded-lg px-3 py-2 flex items-center gap-1.5">
+                    <ArrowRight className="w-3 h-3 text-green-400 shrink-0" />
+                    <p className="text-[10px] text-[#8888B8]">Entry point — not imported by anything</p>
+                  </div>
+                )}
 
                 {/* JSDoc */}
                 {symbols?.jsdoc && (
@@ -1499,49 +1616,112 @@ export function ExplainPanel({
             {/* ══ USED BY ═══════════════════════════════════════════════════════ */}
             {tab === "usedby" && (
               <>
-                {dependentNodes.length > 0 ? (
+                {dependentNodes.length > 0 || transitiveDependents.length > 0 ? (
                   <>
+                    {/* Header row with Direct/All toggle */}
                     <div className="flex items-center justify-between">
                       <p className="text-[10px] text-[#6A6A7A]">
-                        {dependentNodes.length} file{dependentNodes.length !== 1 ? "s" : ""} import this
+                        {showAllDeps
+                          ? `${transitiveDependents.length} file${transitiveDependents.length !== 1 ? "s" : ""} total (transitive)`
+                          : `${dependentNodes.length} direct importer${dependentNodes.length !== 1 ? "s" : ""}`
+                        }
                       </p>
-                      {isHub && (
-                        <span className="flex items-center gap-1 text-[10px] text-yellow-400">
-                          <Star className="w-3 h-3" />Hub file
-                        </span>
-                      )}
-                    </div>
-
-                    {/* Impact indicator */}
-                    <div className="bg-[#111114] border border-[#2A2A2E] rounded-lg p-3">
-                      <p className="text-[9px] text-[#4A4A5A] uppercase tracking-widest mb-1.5">Change impact</p>
-                      <p className="text-[11px] text-[#C9C9D4]">
-                        Modifying this file could directly affect{" "}
-                        <span className="text-white font-semibold">{dependentNodes.length}</span> file
-                        {dependentNodes.length !== 1 ? "s" : ""}.
-                      </p>
-                      <div className="mt-2 h-1.5 bg-[#1A1A1E] rounded-full overflow-hidden">
-                        <motion.div
-                          className="h-full rounded-full"
-                          style={{
-                            background: incomingCount >= 10
-                              ? "#ef4444"
-                              : incomingCount >= 5
-                              ? "#f59e0b"
-                              : "#10b981",
-                          }}
-                          initial={{ width: 0 }}
-                          animate={{ width: `${Math.min(100, (incomingCount / Math.max(totalNodes - 1, 1)) * 100)}%` }}
-                          transition={{ duration: 0.6, ease: "easeOut" }}
-                        />
+                      <div className="flex items-center gap-0.5 bg-[#111118] border border-[#2A2A36] rounded-md p-0.5">
+                        <button
+                          onClick={() => setShowAllDeps(false)}
+                          className={`px-2 py-0.5 rounded text-[9px] font-medium transition-colors ${!showAllDeps ? "bg-[#252535] text-white" : "text-[#5A5A7A] hover:text-white"}`}
+                        >Direct</button>
+                        <button
+                          onClick={() => setShowAllDeps(true)}
+                          className={`px-2 py-0.5 rounded text-[9px] font-medium transition-colors ${showAllDeps ? "bg-[#252535] text-white" : "text-[#5A5A7A] hover:text-white"}`}
+                        >
+                          All {transitiveDependents.length > dependentNodes.length ? `(${transitiveDependents.length})` : ""}
+                        </button>
                       </div>
                     </div>
 
-                    <div className="flex flex-col gap-0.5">
-                      {dependentNodes.map((n) => (
-                        <NodeLink key={n.id} node={n} onClick={() => onNodeSelect?.(n.id)} />
-                      ))}
-                    </div>
+                    {/* Impact bar */}
+                    {!showAllDeps && (
+                      <div className="bg-[#111114] border border-[#2A2A2E] rounded-lg p-3">
+                        <p className="text-[9px] text-[#4A4A5A] uppercase tracking-widest mb-1.5">Change impact</p>
+                        <p className="text-[11px] text-[#C9C9D4]">
+                          Modifying this file directly affects{" "}
+                          <span className="text-white font-semibold">{dependentNodes.length}</span> file
+                          {dependentNodes.length !== 1 ? "s" : ""}.
+                          {transitiveDependents.length > dependentNodes.length && (
+                            <span className="text-[#6A6A7A]"> ({transitiveDependents.length} total including indirect)</span>
+                          )}
+                        </p>
+                        <div className="mt-2 h-1.5 bg-[#1A1A1E] rounded-full overflow-hidden">
+                          <motion.div
+                            className="h-full rounded-full"
+                            style={{
+                              background: incomingCount >= 10 ? "#ef4444" : incomingCount >= 5 ? "#f59e0b" : "#10b981",
+                            }}
+                            initial={{ width: 0 }}
+                            animate={{ width: `${Math.min(100, (incomingCount / Math.max(totalNodes - 1, 1)) * 100)}%` }}
+                            transition={{ duration: 0.6, ease: "easeOut" }}
+                          />
+                        </div>
+                      </div>
+                    )}
+
+                    {/* Direct importers list */}
+                    {!showAllDeps && (
+                      <div className="flex flex-col gap-0.5">
+                        {dependentNodes.map((n) => (
+                          <NodeLink key={n.id} node={n} onClick={() => onNodeSelect?.(n.id)} />
+                        ))}
+                      </div>
+                    )}
+
+                    {/* All transitive dependents, grouped by hop distance */}
+                    {showAllDeps && (
+                      <div className="flex flex-col gap-3">
+                        {(() => {
+                          const maxDist = Math.max(...transitiveDependents.map((d: { id: string; distance: number }) => d.distance), 0);
+                          const groups: Array<{ dist: number; items: typeof transitiveDependents }> = [];
+                          for (let d = 1; d <= maxDist; d++) {
+                            const items = transitiveDependents.filter((x: { id: string; distance: number }) => x.distance === d);
+                            if (items.length) groups.push({ dist: d, items });
+                          }
+                          const hopColors = ["#ef4444", "#f97316", "#eab308", "#84cc16", "#22d3ee"];
+                          return groups.map(({ dist, items }) => {
+                            const color = hopColors[dist - 1] ?? "#8A8A9A";
+                            return (
+                              <div key={dist}>
+                                <div className="flex items-center gap-2 mb-1">
+                                  <span className="w-2 h-2 rounded-full shrink-0" style={{ background: color }} />
+                                  <p className="text-[9px] font-semibold uppercase tracking-widest" style={{ color }}>
+                                    {dist === 1 ? "Direct importers" : `${dist} hops away`}
+                                    <span className="ml-1.5 text-[#4A4A5A] font-normal normal-case tracking-normal">({items.length})</span>
+                                  </p>
+                                </div>
+                                <div className="flex flex-col gap-0.5 pl-4">
+                                  {items.slice(0, 10).map(({ id }: { id: string }) => {
+                                    const n = nodes.find((n) => n.id === id);
+                                    if (!n) return null;
+                                    return <NodeLink key={id} node={n} onClick={() => onNodeSelect?.(id)} />;
+                                  })}
+                                  {items.length > 10 && (
+                                    <p className="text-[9px] text-[#4A4A5A] px-2.5 py-1">+{items.length - 10} more</p>
+                                  )}
+                                </div>
+                              </div>
+                            );
+                          });
+                        })()}
+                        {transitiveDependents.length === 0 && (
+                          <p className="text-[10px] text-[#4A4A5A] text-center py-4">No dependents found</p>
+                        )}
+                      </div>
+                    )}
+
+                    {!showAllDeps && isHub && (
+                      <span className="flex items-center gap-1 text-[10px] text-yellow-400 justify-center">
+                        <Star className="w-3 h-3" />Hub file
+                      </span>
+                    )}
                   </>
                 ) : (
                   <div className="flex flex-col items-center justify-center py-8 text-center">
