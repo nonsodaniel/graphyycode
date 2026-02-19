@@ -9,9 +9,11 @@ import {
   Camera,
   CheckCircle,
   Loader2,
+  Link2,
+  Braces,
+  MousePointerClick,
+  Share2,
 } from "lucide-react";
-
-type Step = 0 | 1 | 2 | 3 | 4 | 5;
 
 const DEMO_REPO = "https://github.com/vercel/next.js";
 
@@ -55,16 +57,52 @@ const EXPLANATIONS: Record<string, { role: string; desc: string }> = {
   },
   components: {
     role: "UI components",
-    desc: "Reusable React components. Organized by feature or type, these are imported across multiple page routes.",
+    desc: "Reusable React components. Organised by feature or type, these are imported across multiple page routes.",
   },
 };
+
+// 6 steps: 0–5
+const STEPS = [
+  {
+    icon: Link2,
+    title: "Paste a repo URL",
+    desc: "Enter any public GitHub repository URL. No login needed for your first 3 analyses.",
+  },
+  {
+    icon: Loader2,
+    title: "Fetching repository",
+    desc: "GraphyyCode calls the GitHub API to retrieve your full file tree and source files.",
+  },
+  {
+    icon: Braces,
+    title: "Building dependency graph",
+    desc: "Imports and exports are traced across all files to map every dependency relationship.",
+  },
+  {
+    icon: MousePointerClick,
+    title: "Graph is ready",
+    desc: "An interactive node graph appears. Click any node to inspect its role in the codebase.",
+  },
+  {
+    icon: FileCode,
+    title: "File explanation",
+    desc: "Each node reveals its file role, language, and how many other files import or export it.",
+  },
+  {
+    icon: Share2,
+    title: "Export & share",
+    desc: "Take a screenshot of the graph and share it with your team on Twitter, LinkedIn, or Slack.",
+  },
+] as const;
+
+type StepIndex = 0 | 1 | 2 | 3 | 4 | 5;
 
 function NodeIcon({ type }: { type: string }) {
   if (type === "folder") return <Folder className="w-3 h-3 text-blue-400" />;
   return <FileCode className="w-3 h-3 text-[#8A8A9A]" />;
 }
 
-function GraphView({
+function SimGraph({
   activeNode,
   onNodeClick,
   visible,
@@ -83,13 +121,9 @@ function GraphView({
           return (
             <motion.line
               key={i}
-              initial={{ pathLength: 0, opacity: 0 }}
-              animate={
-                visible
-                  ? { pathLength: 1, opacity: isActive ? 1 : 0.3 }
-                  : { pathLength: 0, opacity: 0 }
-              }
-              transition={{ duration: 0.6, delay: i * 0.08 }}
+              initial={{ opacity: 0 }}
+              animate={visible ? { opacity: isActive ? 1 : 0.25 } : { opacity: 0 }}
+              transition={{ duration: 0.5, delay: i * 0.07 }}
               x1={`${from.x}%`}
               y1={`${from.y}%`}
               x2={`${to.x}%`}
@@ -100,10 +134,11 @@ function GraphView({
           );
         })}
       </svg>
+
       {MOCK_NODES.map((node, i) => {
         const isActive = activeNode === node.id;
         const isConnected =
-          activeNode &&
+          !!activeNode &&
           MOCK_EDGES.some(
             (e) =>
               (e.from === activeNode && e.to === node.id) ||
@@ -112,35 +147,24 @@ function GraphView({
         return (
           <motion.button
             key={node.id}
-            initial={{ opacity: 0, scale: 0.5 }}
-            animate={
-              visible
-                ? {
-                    opacity: 1,
-                    scale: isActive ? 1.1 : 1,
-                  }
-                : { opacity: 0, scale: 0.5 }
-            }
-            transition={{ duration: 0.4, delay: visible ? i * 0.07 : 0 }}
+            initial={{ opacity: 0, scale: 0.6 }}
+            animate={visible ? { opacity: 1, scale: isActive ? 1.08 : 1 } : { opacity: 0, scale: 0.6 }}
+            transition={{ duration: 0.35, delay: visible ? i * 0.06 : 0 }}
             style={{ left: `${node.x}%`, top: `${node.y}%` }}
             className="absolute -translate-x-1/2 -translate-y-1/2"
             onClick={() => onNodeClick(node.id)}
           >
             <div
-              className={`
-                flex items-center gap-1 px-2 py-1 rounded-md border text-xs font-mono
-                transition-all duration-200
-                ${
-                  isActive
-                    ? "bg-blue-600/20 border-blue-500 text-white"
-                    : isConnected
-                    ? "bg-[#18181C] border-[#3A3A3E] text-[#CCCCCC]"
-                    : "bg-[#111114] border-[#2A2A2E] text-[#8A8A9A]"
-                }
-              `}
+              className={`flex items-center gap-1 px-2 py-1 rounded-md border text-xs font-mono transition-all duration-200 ${
+                isActive
+                  ? "bg-blue-600/20 border-blue-500 text-white shadow-[0_0_12px_rgba(59,130,246,0.25)]"
+                  : isConnected
+                  ? "bg-[#18181C] border-[#3A3A3E] text-[#CCCCCC]"
+                  : "bg-[#111114] border-[#2A2A2E] text-[#8A8A9A]"
+              }`}
             >
               <NodeIcon type={node.type} />
-              <span>{node.label}</span>
+              {node.label}
             </div>
           </motion.button>
         );
@@ -149,19 +173,11 @@ function GraphView({
   );
 }
 
-function ExplanationPanel({
-  nodeId,
-  visible,
-}: {
-  nodeId: string | null;
-  visible: boolean;
-}) {
+function ExplainPanel({ nodeId, visible }: { nodeId: string | null; visible: boolean }) {
   const data = nodeId ? EXPLANATIONS[nodeId] : null;
   return (
-    <div className="h-full border-l border-[#2A2A2E] p-4 flex flex-col gap-3">
-      <p className="text-xs text-[#8A8A9A] font-medium uppercase tracking-wider">
-        File explanation
-      </p>
+    <div className="h-full border-l border-[#2A2A2E] p-4 flex flex-col gap-3 bg-[#0B0B0C]">
+      <p className="text-xs text-[#8A8A9A] font-medium uppercase tracking-wider">File explanation</p>
       <AnimatePresence mode="wait">
         {visible && data ? (
           <motion.div
@@ -169,7 +185,7 @@ function ExplanationPanel({
             initial={{ opacity: 0, y: 6 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -6 }}
-            transition={{ duration: 0.2 }}
+            transition={{ duration: 0.3 }}
             className="flex flex-col gap-2"
           >
             <div className="flex items-center gap-2">
@@ -177,15 +193,24 @@ function ExplanationPanel({
               <span className="text-xs font-semibold text-white">{data.role}</span>
             </div>
             <p className="text-xs text-[#8A8A9A] leading-relaxed">{data.desc}</p>
+            <div className="mt-2 pt-2 border-t border-[#2A2A2E] grid grid-cols-2 gap-2">
+              <div className="bg-[#111114] rounded p-2">
+                <p className="text-[10px] text-[#4A4A5A] mb-0.5">Imports</p>
+                <p className="text-xs text-white font-mono">
+                  {MOCK_EDGES.filter((e) => e.from === nodeId).length}
+                </p>
+              </div>
+              <div className="bg-[#111114] rounded p-2">
+                <p className="text-[10px] text-[#4A4A5A] mb-0.5">Used by</p>
+                <p className="text-xs text-white font-mono">
+                  {MOCK_EDGES.filter((e) => e.to === nodeId).length}
+                </p>
+              </div>
+            </div>
           </motion.div>
         ) : (
-          <motion.p
-            key="empty"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            className="text-xs text-[#4A4A5A]"
-          >
-            Click a node to see explanation
+          <motion.p key="empty" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-xs text-[#4A4A5A]">
+            Click a node to see its explanation
           </motion.p>
         )}
       </AnimatePresence>
@@ -193,330 +218,372 @@ function ExplanationPanel({
   );
 }
 
-function ProgressBar({ step }: { step: Step }) {
-  const pct = (step / 5) * 100;
-  return (
-    <div className="w-full h-0.5 bg-[#2A2A2E] rounded-full overflow-hidden">
-      <motion.div
-        className="h-full bg-blue-600 rounded-full"
-        animate={{ width: `${pct}%` }}
-        transition={{ duration: 0.5 }}
-      />
-    </div>
-  );
-}
-
-const STEP_LABELS: Record<Step, string> = {
-  0: "Paste a GitHub repo URL",
-  1: "Analysing repository...",
-  2: "Dependency graph ready",
-  3: "Node selected — showing explanation",
-  4: "Screenshot captured",
-  5: "Analysis complete",
-};
-
 export function AnimationDemo() {
   const prefersReduced = useReducedMotion();
-  const [step, setStep] = useState<Step>(0);
+  const [step, setStep] = useState<StepIndex>(0);
   const [activeNode, setActiveNode] = useState<string | null>(null);
   const [inputText, setInputText] = useState("");
   const [screenshotDone, setScreenshotDone] = useState(false);
-  const intervalRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [cycleKey, setCycleKey] = useState(0);
+  const timeoutsRef = useRef<ReturnType<typeof setTimeout>[]>([]);
 
+  const clearAll = () => {
+    timeoutsRef.current.forEach(clearTimeout);
+    timeoutsRef.current = [];
+  };
+
+  const jumpTo = (s: StepIndex) => {
+    clearAll();
+    setStep(s);
+    if (s >= 3) setActiveNode("app");
+    if (s >= 4) setScreenshotDone(true);
+    if (s < 3) setActiveNode(null);
+    if (s < 4) setScreenshotDone(false);
+    if (s === 0) setInputText("");
+    else setInputText(DEMO_REPO);
+  };
+
+  // Auto-play sequence — re-runs on each cycleKey increment
   useEffect(() => {
     if (prefersReduced) {
-      setStep(2);
+      setStep(3);
       setActiveNode("app");
+      setInputText(DEMO_REPO);
       return;
     }
 
-    // Autoplay sequence
-    const sequence: Array<{ delay: number; action: () => void }> = [
-      {
-        delay: 800,
-        action: () => {
-          // Typing animation for input
-          let i = 0;
-          const chars = DEMO_REPO.split("");
-          const type = () => {
-            if (i < chars.length) {
-              setInputText(DEMO_REPO.slice(0, i + 1));
-              i++;
-              setTimeout(type, 35);
-            } else {
-              setTimeout(() => setStep(1), 400);
-            }
-          };
-          type();
-        },
-      },
-      {
-        delay: 3500,
-        action: () => setStep(2),
-      },
-      {
-        delay: 5000,
-        action: () => {
-          setStep(3);
-          setActiveNode("app");
-        },
-      },
-      {
-        delay: 6500,
-        action: () => {
-          setStep(4);
-          setScreenshotDone(true);
-        },
-      },
-      {
-        delay: 8000,
-        action: () => {
-          setStep(5);
-        },
-      },
-      // Reset
-      {
-        delay: 10000,
-        action: () => {
-          setStep(0);
-          setActiveNode(null);
-          setInputText("");
-          setScreenshotDone(false);
-        },
-      },
-    ];
-
-    let totalDelay = 0;
-    const timeouts: ReturnType<typeof setTimeout>[] = [];
-
-    for (const item of sequence) {
-      totalDelay += item.delay;
-      const t = setTimeout(item.action, totalDelay);
-      timeouts.push(t);
-    }
-
-    // Loop
-    intervalRef.current = setTimeout(() => {
-      // handled by last sequence item that resets
-    }, totalDelay + 500);
-
-    return () => {
-      timeouts.forEach(clearTimeout);
-      if (intervalRef.current) clearTimeout(intervalRef.current);
+    let delay = 0;
+    const t = (ms: number, fn: () => void) => {
+      delay += ms;
+      const id = setTimeout(fn, delay);
+      timeoutsRef.current.push(id);
     };
-  }, [prefersReduced]);
 
-  // Re-trigger loop when step resets to 0
-  useEffect(() => {
-    if (step === 0 && !prefersReduced) {
-      // will trigger from the outer useEffect re-run when component remounts
-    }
-  }, [step, prefersReduced]);
+    // Step 0 → type URL character by character
+    t(800, () => {
+      let i = 0;
+      const chars = DEMO_REPO.split("");
+      const type = () => {
+        if (i < chars.length) {
+          setInputText(DEMO_REPO.slice(0, i + 1));
+          i++;
+          const id = setTimeout(type, 55); // 55ms per char — readable typing pace
+          timeoutsRef.current.push(id);
+        } else {
+          const id = setTimeout(() => setStep(1), 600);
+          timeoutsRef.current.push(id);
+        }
+      };
+      type();
+    });
+
+    // Step 1 — show fetching for 3.5s
+    t(DEMO_REPO.length * 55 + 1400, () => setStep(2));
+
+    // Step 2 — show "building graph" for 3.5s
+    t(3500, () => setStep(3));
+
+    // Step 3 — graph is ready; let user read for 2.5s then auto-select a node
+    t(2500, () => {
+      setActiveNode("app");
+      setStep(4);
+    });
+
+    // Step 4 — show file explanation for 4s
+    t(4000, () => setStep(5));
+
+    // Step 5 — flash screenshot after 1s
+    t(1000, () => setScreenshotDone(true));
+
+    // Hold on step 5 for 4s so user can read, then restart loop
+    t(4000, () => {
+      setStep(0);
+      setActiveNode(null);
+      setInputText("");
+      setScreenshotDone(false);
+      setCycleKey((k) => k + 1);
+    });
+
+    return clearAll;
+  }, [cycleKey, prefersReduced]);
+
+  const graphVisible = step >= 3;
+  const explainVisible = step >= 4;
 
   return (
     <section id="demo" className="py-24 px-4">
-      <div className="max-w-5xl mx-auto">
-        {/* Section header */}
+      <div className="max-w-6xl mx-auto">
+        {/* Header */}
         <div className="text-center mb-12">
           <p className="text-xs text-blue-500 font-semibold uppercase tracking-widest mb-3">
             Interactive Demo
           </p>
-          <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
-            See it in action
-          </h2>
-          <p className="text-[#8A8A9A] max-w-xl mx-auto">
-            Watch how GraphyyCode analyses a repository and builds an interactive visualisation.
+          <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">See it in action</h2>
+          <p className="text-[#8A8A9A] max-w-xl mx-auto text-sm">
+            Watch GraphyyCode analyse a real repository — or click any step to jump to it.
           </p>
         </div>
 
-        {/* Demo container */}
-        <div className="border border-[#2A2A2E] rounded-xl overflow-hidden bg-[#111114]">
-          {/* Window bar */}
-          <div className="flex items-center gap-2 px-4 py-3 border-b border-[#2A2A2E] bg-[#0B0B0C]">
-            <div className="flex gap-1.5">
-              <div className="w-3 h-3 rounded-full bg-[#FF5F57]" />
-              <div className="w-3 h-3 rounded-full bg-[#FFBD2E]" />
-              <div className="w-3 h-3 rounded-full bg-[#28C840]" />
-            </div>
-            <div className="flex-1 mx-4">
-              <div className="h-5 rounded bg-[#18181C] border border-[#2A2A2E] flex items-center px-3">
-                <span className="text-xs text-[#4A4A5A]">graphyycode.app</span>
-              </div>
-            </div>
-          </div>
-
-          {/* Step label */}
-          <div className="px-4 pt-4 pb-2">
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                {step === 1 && (
-                  <Loader2 className="w-3 h-3 text-blue-500 animate-spin" />
-                )}
-                {step >= 5 && (
-                  <CheckCircle className="w-3 h-3 text-green-500" />
-                )}
-                <span className="text-xs text-[#8A8A9A]">{STEP_LABELS[step]}</span>
-              </div>
-              <span className="text-xs text-[#4A4A5A]">Step {step + 1}/6</span>
-            </div>
-            <ProgressBar step={step} />
-          </div>
-
-          {/* Repo input row */}
-          <div className="px-4 py-3 border-b border-[#2A2A2E]">
-            <div className="flex gap-2">
-              <div className="flex-1 h-9 rounded-md border border-[#2A2A2E] bg-[#0B0B0C] flex items-center px-3 overflow-hidden">
-                <span className="text-sm font-mono text-[#8A8A9A] truncate">
-                  {inputText || (
-                    <span className="text-[#4A4A5A]">
-                      https://github.com/owner/repository
-                    </span>
-                  )}
-                  {step === 0 && inputText.length > 0 && (
-                    <span className="inline-block w-0.5 h-4 bg-blue-500 ml-0.5 animate-pulse" />
-                  )}
-                </span>
-              </div>
-              <div
-                className={`
-                  h-9 px-4 rounded-md text-xs font-medium flex items-center gap-1.5 transition-colors
-                  ${step >= 1 ? "bg-blue-600 text-white" : "bg-[#18181C] text-[#8A8A9A] border border-[#2A2A2E]"}
-                `}
-              >
-                {step === 1 ? (
-                  <>
-                    <Loader2 className="w-3 h-3 animate-spin" />
-                    Analysing
-                  </>
-                ) : (
-                  <>
-                    <GitBranch className="w-3 h-3" />
-                    Visualise
-                  </>
-                )}
-              </div>
-            </div>
-          </div>
-
-          {/* Main demo area */}
-          <div className="flex flex-col md:flex-row" style={{ minHeight: 320 }}>
-            {/* Graph area */}
-            <div className="flex-1 relative p-4 min-h-[260px] md:min-h-0">
-              {step < 2 ? (
-                <div className="h-full flex items-center justify-center">
-                  {step === 1 ? (
-                    <motion.div
-                      className="flex flex-col items-center gap-3"
-                      initial={{ opacity: 0 }}
-                      animate={{ opacity: 1 }}
+        <div className="flex flex-col lg:flex-row gap-6 items-start">
+          {/* Step sidebar */}
+          <div className="lg:w-64 shrink-0 flex flex-row lg:flex-col gap-2 overflow-x-auto lg:overflow-visible pb-2 lg:pb-0">
+            {STEPS.map((s, i) => {
+              const Icon = s.icon;
+              const isActive = step === i;
+              const isDone = step > i;
+              return (
+                <button
+                  key={i}
+                  onClick={() => jumpTo(i as StepIndex)}
+                  className={`flex items-start gap-3 p-3 rounded-lg border text-left transition-all shrink-0 lg:shrink w-56 lg:w-auto ${
+                    isActive
+                      ? "border-blue-500/50 bg-blue-600/10"
+                      : isDone
+                      ? "border-[#2A2A2E] bg-[#111114] opacity-60"
+                      : "border-[#1A1A1E] bg-[#0B0B0C] opacity-40 hover:opacity-70"
+                  }`}
+                >
+                  <div
+                    className={`w-7 h-7 rounded-full border flex items-center justify-center shrink-0 mt-0.5 transition-colors ${
+                      isActive
+                        ? "border-blue-500 bg-blue-600/20"
+                        : isDone
+                        ? "border-[#3A3A3E] bg-[#2A2A2E]"
+                        : "border-[#2A2A2E]"
+                    }`}
+                  >
+                    {isDone ? (
+                      <CheckCircle className="w-3.5 h-3.5 text-green-400" />
+                    ) : (
+                      <Icon
+                        className={`w-3.5 h-3.5 ${
+                          isActive
+                            ? `text-blue-400 ${i === 1 ? "animate-spin" : ""}`
+                            : "text-[#4A4A5A]"
+                        }`}
+                      />
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <p
+                      className={`text-xs font-semibold mb-0.5 ${
+                        isActive ? "text-white" : "text-[#8A8A9A]"
+                      }`}
                     >
-                      <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
-                      <p className="text-xs text-[#8A8A9A]">
-                        Fetching repository structure...
-                      </p>
-                      <div className="w-48 h-1.5 bg-[#2A2A2E] rounded-full overflow-hidden">
-                        <motion.div
-                          className="h-full bg-blue-600 rounded-full"
-                          initial={{ width: "0%" }}
-                          animate={{ width: "85%" }}
-                          transition={{ duration: 1.8, ease: "easeInOut" }}
-                        />
-                      </div>
-                    </motion.div>
+                      {s.title}
+                    </p>
+                    <AnimatePresence>
+                      {isActive && (
+                        <motion.p
+                          initial={{ opacity: 0, height: 0 }}
+                          animate={{ opacity: 1, height: "auto" }}
+                          exit={{ opacity: 0, height: 0 }}
+                          transition={{ duration: 0.2 }}
+                          className="text-[11px] text-[#8A8A9A] leading-relaxed overflow-hidden"
+                        >
+                          {s.desc}
+                        </motion.p>
+                      )}
+                    </AnimatePresence>
+                  </div>
+                </button>
+              );
+            })}
+          </div>
+
+          {/* Main simulation window */}
+          <div className="flex-1 border border-[#2A2A2E] rounded-xl overflow-hidden bg-[#111114] min-w-0">
+            {/* Window chrome */}
+            <div className="flex items-center gap-2 px-4 py-3 border-b border-[#2A2A2E] bg-[#0B0B0C]">
+              <div className="flex gap-1.5">
+                <div className="w-3 h-3 rounded-full bg-[#FF5F57]" />
+                <div className="w-3 h-3 rounded-full bg-[#FFBD2E]" />
+                <div className="w-3 h-3 rounded-full bg-[#28C840]" />
+              </div>
+              <div className="flex-1 mx-4">
+                <div className="h-5 rounded bg-[#18181C] border border-[#2A2A2E] flex items-center px-3">
+                  <span className="text-xs text-[#4A4A5A]">graphyycode.app</span>
+                </div>
+              </div>
+              {/* Loop indicator */}
+              <div className="flex items-center gap-1 text-[10px] text-[#4A4A5A]">
+                <div className="w-1.5 h-1.5 rounded-full bg-green-500 animate-pulse" />
+                live demo
+              </div>
+            </div>
+
+            {/* URL input row */}
+            <div className="px-4 py-3 border-b border-[#2A2A2E]">
+              <div className="flex gap-2">
+                <div className="flex-1 h-9 rounded-md border border-[#2A2A2E] bg-[#0B0B0C] flex items-center px-3 overflow-hidden">
+                  <span className="text-sm font-mono text-[#8A8A9A] truncate">
+                    {inputText || (
+                      <span className="text-[#3A3A4A]">
+                        https://github.com/owner/repository
+                      </span>
+                    )}
+                    {step === 0 && inputText.length > 0 && (
+                      <span className="inline-block w-0.5 h-3.5 bg-blue-500 ml-0.5 animate-pulse align-middle" />
+                    )}
+                  </span>
+                </div>
+                <div
+                  className={`h-9 px-4 rounded-md text-xs font-medium flex items-center gap-1.5 transition-all shrink-0 ${
+                    step >= 1
+                      ? "bg-blue-600 text-white"
+                      : "bg-[#18181C] text-[#8A8A9A] border border-[#2A2A2E]"
+                  }`}
+                >
+                  {step === 1 ? (
+                    <>
+                      <Loader2 className="w-3 h-3 animate-spin" />
+                      Analysing
+                    </>
                   ) : (
-                    <div className="text-center text-[#4A4A5A]">
-                      <GitBranch className="w-10 h-10 mx-auto mb-2 opacity-20" />
-                      <p className="text-xs">Paste a repo URL to visualise</p>
-                    </div>
+                    <>
+                      <GitBranch className="w-3 h-3" />
+                      Visualise
+                    </>
                   )}
                 </div>
-              ) : (
-                <GraphView
-                  activeNode={activeNode}
-                  onNodeClick={(id) => {
-                    setActiveNode(id);
-                    setStep(3);
-                  }}
-                  visible={step >= 2}
-                />
-              )}
+              </div>
+            </div>
 
-              {/* Screenshot flash overlay */}
-              <AnimatePresence>
-                {step === 4 && screenshotDone && (
-                  <motion.div
-                    initial={{ opacity: 0.8 }}
-                    animate={{ opacity: 0 }}
-                    transition={{ duration: 0.4 }}
-                    className="absolute inset-0 bg-white rounded pointer-events-none"
-                  />
+            {/* Main visualiser area */}
+            <div className="flex flex-col sm:flex-row" style={{ minHeight: 280 }}>
+              {/* Graph panel */}
+              <div className="flex-1 relative p-4 min-h-[240px] sm:min-h-0">
+                {/* Steps 0–1: empty / loading states */}
+                {step < 2 && (
+                  <div className="h-full flex items-center justify-center">
+                    {step === 1 ? (
+                      <motion.div
+                        className="flex flex-col items-center gap-3"
+                        initial={{ opacity: 0 }}
+                        animate={{ opacity: 1 }}
+                      >
+                        <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+                        <p className="text-xs text-[#8A8A9A]">Fetching repository structure…</p>
+                        <div className="w-44 h-1.5 bg-[#2A2A2E] rounded-full overflow-hidden">
+                          <motion.div
+                            className="h-full bg-blue-600 rounded-full"
+                            initial={{ width: "0%" }}
+                            animate={{ width: "80%" }}
+                            transition={{ duration: 2, ease: "easeInOut" }}
+                          />
+                        </div>
+                      </motion.div>
+                    ) : (
+                      <div className="text-center text-[#4A4A5A]">
+                        <GitBranch className="w-10 h-10 mx-auto mb-2 opacity-20" />
+                        <p className="text-xs">Paste a repo URL to visualise</p>
+                      </div>
+                    )}
+                  </div>
                 )}
-              </AnimatePresence>
-            </div>
 
-            {/* Explanation panel */}
-            <div className="md:w-52 bg-[#0B0B0C]">
-              <ExplanationPanel
-                nodeId={activeNode}
-                visible={step >= 3}
-              />
-            </div>
-          </div>
-
-          {/* Bottom toolbar */}
-          <div className="px-4 py-3 border-t border-[#2A2A2E] flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <span className="text-xs text-[#4A4A5A]">
-                {MOCK_NODES.length} files · {MOCK_EDGES.length} dependencies
-              </span>
-            </div>
-            <div className="flex items-center gap-2">
-              <AnimatePresence>
-                {step >= 4 && (
+                {/* Step 2: building graph */}
+                {step === 2 && (
                   <motion.div
-                    initial={{ opacity: 0, scale: 0.8 }}
-                    animate={{ opacity: 1, scale: 1 }}
-                    className="flex items-center gap-1.5 text-xs text-green-400"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    className="h-full flex items-center justify-center"
                   >
-                    <CheckCircle className="w-3.5 h-3.5" />
-                    Screenshot saved
+                    <div className="flex flex-col items-center gap-3">
+                      <div className="flex gap-1">
+                        {[0, 1, 2, 3].map((i) => (
+                          <motion.div
+                            key={i}
+                            className="w-2 h-2 rounded-full bg-blue-500"
+                            animate={{ opacity: [0.3, 1, 0.3] }}
+                            transition={{ repeat: Infinity, duration: 1, delay: i * 0.2 }}
+                          />
+                        ))}
+                      </div>
+                      <p className="text-xs text-[#8A8A9A]">Building dependency graph…</p>
+                      <div className="text-[10px] text-[#4A4A5A] text-center space-y-0.5">
+                        <p>✓ 88 files found</p>
+                        <p>✓ Tracing import chains</p>
+                        <motion.p
+                          animate={{ opacity: [0.4, 1, 0.4] }}
+                          transition={{ repeat: Infinity, duration: 1.4 }}
+                        >
+                          ⟳ Resolving aliases…
+                        </motion.p>
+                      </div>
+                    </div>
                   </motion.div>
                 )}
-              </AnimatePresence>
-              <div
-                className={`
-                  flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs border transition-colors
-                  ${step >= 2 ? "border-[#2A2A2E] text-[#8A8A9A] hover:border-blue-500/50 cursor-pointer" : "border-[#1A1A1E] text-[#3A3A4A] cursor-default"}
-                `}
-              >
-                <Camera className="w-3.5 h-3.5" />
-                Screenshot
+
+                {/* Steps 3+: graph */}
+                {step >= 3 && (
+                  <SimGraph
+                    activeNode={activeNode}
+                    onNodeClick={(id) => {
+                      setActiveNode(id);
+                      setStep(4);
+                    }}
+                    visible={graphVisible}
+                  />
+                )}
+
+                {/* Screenshot flash */}
+                <AnimatePresence>
+                  {step === 5 && screenshotDone && (
+                    <motion.div
+                      initial={{ opacity: 0.7 }}
+                      animate={{ opacity: 0 }}
+                      transition={{ duration: 0.5 }}
+                      className="absolute inset-0 bg-white pointer-events-none"
+                    />
+                  )}
+                </AnimatePresence>
               </div>
+
+              {/* Explanation sidebar */}
+              <div className="sm:w-52 bg-[#0B0B0C] border-t sm:border-t-0">
+                <ExplainPanel nodeId={activeNode} visible={explainVisible} />
+              </div>
+            </div>
+
+            {/* Status bar */}
+            <div className="px-4 py-2.5 border-t border-[#2A2A2E] flex items-center justify-between bg-[#0B0B0C]">
+              <span className="text-[10px] text-[#4A4A5A]">
+                {step >= 3
+                  ? `${MOCK_NODES.length} files · ${MOCK_EDGES.length} dependencies`
+                  : "graphyycode.app — codebase visualiser"}
+              </span>
+              <AnimatePresence mode="wait">
+                {step >= 5 && screenshotDone ? (
+                  <motion.div
+                    key="saved"
+                    initial={{ opacity: 0, x: 8 }}
+                    animate={{ opacity: 1, x: 0 }}
+                    exit={{ opacity: 0 }}
+                    className="flex items-center gap-1.5 text-[10px] text-green-400"
+                  >
+                    <CheckCircle className="w-3 h-3" />
+                    Screenshot saved
+                  </motion.div>
+                ) : step >= 3 ? (
+                  <motion.button
+                    key="btn"
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    className="flex items-center gap-1.5 px-2.5 py-1 rounded border border-[#2A2A2E] text-[10px] text-[#8A8A9A] hover:border-blue-500/40 transition-colors"
+                    onClick={() => {
+                      setStep(5);
+                      setScreenshotDone(true);
+                    }}
+                  >
+                    <Camera className="w-3 h-3" />
+                    Screenshot
+                  </motion.button>
+                ) : null}
+              </AnimatePresence>
             </div>
           </div>
-        </div>
-
-        {/* Step indicators */}
-        <div className="mt-8 flex justify-center gap-6 flex-wrap">
-          {(Object.keys(STEP_LABELS) as unknown as Step[]).map((s) => (
-            <div
-              key={s}
-              className={`flex items-center gap-2 text-xs transition-colors ${
-                Number(s) === step ? "text-white" : "text-[#4A4A5A]"
-              }`}
-            >
-              <div
-                className={`w-5 h-5 rounded-full border flex items-center justify-center text-xs font-bold transition-colors ${
-                  Number(s) <= step
-                    ? "border-blue-500 bg-blue-600/20 text-blue-400"
-                    : "border-[#2A2A2E] text-[#4A4A5A]"
-                }`}
-              >
-                {Number(s) + 1}
-              </div>
-              <span className="hidden sm:inline">{STEP_LABELS[s]}</span>
-            </div>
-          ))}
         </div>
       </div>
     </section>
