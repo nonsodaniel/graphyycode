@@ -15,6 +15,9 @@ import ReactFlow, {
   BackgroundVariant,
   Panel,
   ReactFlowProvider,
+  Handle,
+  Position,
+  PanOnScrollMode,
 } from "reactflow";
 import "reactflow/dist/style.css";
 import {
@@ -24,6 +27,8 @@ import {
   X,
   BarChart2,
   Maximize2,
+  Network,
+  GitBranch,
 } from "lucide-react";
 import type { GraphNode, GraphEdge } from "@/lib/graph-builder";
 
@@ -36,7 +41,24 @@ interface GraphViewProps {
   selectedNodeId?: string | null;
 }
 
-// ─── Tiny custom node ─────────────────────────────────────────────────────────
+type ViewMode = "graph" | "tree";
+
+// ─── Language colours (shared with nodes) ────────────────────────────────────
+
+const LANG_COLORS: Record<string, string> = {
+  TypeScript: "#4A9EFF",
+  JavaScript: "#F5D440",
+  Python: "#4AA8D8",
+  Go: "#00CED8",
+  Rust: "#E8A87C",
+  Ruby: "#E8605A",
+  Java: "#F0A030",
+  "C#": "#40C060",
+  "C++": "#E8608A",
+  C: "#9090AA",
+};
+
+// ─── Custom node: file/folder ─────────────────────────────────────────────────
 
 function CustomNode({
   data,
@@ -51,35 +73,62 @@ function CustomNode({
   };
 }) {
   const isFolder = data.type === "folder";
+  const langColor = data.language ? (LANG_COLORS[data.language] ?? null) : null;
+
   return (
-    <div
-      className={`
-        flex items-center gap-1 px-1.5 py-0.5 rounded border text-[10px] font-mono
-        transition-all duration-150 cursor-pointer select-none
-        ${
-          data.selected
-            ? "border-blue-500 bg-blue-600/20 text-white shadow-sm shadow-blue-500/30"
-            : data.dimmed
-            ? "border-[#2A2A2E]/40 bg-[#111114]/40 text-[#3A3A4A]"
-            : "border-[#2A2A2E] bg-[#111114] text-[#8A8A9A] hover:border-[#3A3A4A] hover:text-white"
-        }
-      `}
-      title={data.role ?? data.label}
-      style={{ maxWidth: 120 }}
-    >
-      {isFolder ? (
-        <Folder className="w-2.5 h-2.5 text-blue-400 shrink-0" />
-      ) : (
-        <FileCode className="w-2.5 h-2.5 text-[#6A6A7A] shrink-0" />
-      )}
-      <span className="truncate leading-tight">{data.label}</span>
-    </div>
+    <>
+      <Handle type="target" position={Position.Top} style={{ opacity: 0, width: 1, height: 1, background: "transparent", border: "none", minWidth: 0, minHeight: 0 }} />
+      <div
+        className={`
+          flex items-center gap-2 px-3 py-2 rounded-lg border text-sm font-mono font-medium
+          transition-all duration-150 cursor-pointer select-none
+          ${
+            data.selected
+              ? "border-blue-400 bg-blue-500/25 text-white shadow-lg shadow-blue-500/25 ring-1 ring-blue-400/40"
+              : data.dimmed
+              ? "border-[#1E1E26] bg-[#0D0D12] text-[#2E2E3A]"
+              : "border-[#38384A] bg-[#16161E] text-[#D0D0E0] hover:border-[#5050A0] hover:bg-[#1E1E2A] hover:text-white"
+          }
+        `}
+        title={data.role ?? data.label}
+        style={{ maxWidth: 240 }}
+      >
+        {langColor && !data.dimmed && (
+          <span
+            className="w-2 h-2 rounded-full shrink-0 opacity-90"
+            style={{ background: langColor, boxShadow: `0 0 6px ${langColor}60` }}
+          />
+        )}
+        {isFolder ? (
+          <Folder className="w-3.5 h-3.5 text-yellow-300 shrink-0" />
+        ) : (
+          !langColor && <FileCode className="w-3.5 h-3.5 text-[#6878A8] shrink-0" />
+        )}
+        <span className="truncate leading-tight">{data.label}</span>
+      </div>
+      <Handle type="source" position={Position.Bottom} style={{ opacity: 0, width: 1, height: 1, background: "transparent", border: "none", minWidth: 0, minHeight: 0 }} />
+    </>
   );
 }
 
-const nodeTypes = { custom: CustomNode };
+// ─── Custom node: directory (tree view) ──────────────────────────────────────
 
-// ─── Helpers ──────────────────────────────────────────────────────────────────
+function TreeDirNode({ data }: { data: { label: string } }) {
+  return (
+    <>
+      <Handle type="target" position={Position.Top} style={{ opacity: 0, width: 1, height: 1, background: "transparent", border: "none", minWidth: 0, minHeight: 0 }} />
+      <div className="flex items-center gap-2 px-3 py-2.5 bg-[#1A1A28] border-2 border-[#505080] rounded-lg text-sm font-bold text-[#C0C0E0] select-none tracking-wide" style={{ minWidth: 130 }}>
+        <Folder className="w-4 h-4 text-yellow-300 shrink-0" />
+        <span className="truncate">{data.label}</span>
+      </div>
+      <Handle type="source" position={Position.Bottom} style={{ opacity: 0, width: 1, height: 1, background: "transparent", border: "none", minWidth: 0, minHeight: 0 }} />
+    </>
+  );
+}
+
+const nodeTypes = { custom: CustomNode, treeDir: TreeDirNode };
+
+// ─── Helpers: graph layout ─────────────────────────────────────────────────────
 
 function buildConnectedSet(nodeId: string, edges: GraphEdge[]): Set<string> {
   const s = new Set<string>();
@@ -91,7 +140,7 @@ function buildConnectedSet(nodeId: string, edges: GraphEdge[]): Set<string> {
   return s;
 }
 
-function toReactFlowNodes(
+function toGraphNodes(
   graphNodes: GraphNode[],
   selectedId: string | null | undefined,
   connectedIds: Set<string> | undefined,
@@ -107,7 +156,6 @@ function toReactFlowNodes(
     const matchesLang =
       !langFilter ||
       n.language?.toLowerCase() === langFilter.toLowerCase();
-
     const hidden = !matchesSearch || !matchesLang;
     const isSelected = n.id === selectedId;
     const isDimmed =
@@ -119,10 +167,7 @@ function toReactFlowNodes(
     return {
       id: n.id,
       type: "custom",
-      position: {
-        x: (i % cols) * 140,
-        y: Math.floor(i / cols) * 60,
-      },
+      position: { x: (i % cols) * 260, y: Math.floor(i / cols) * 84 },
       hidden,
       data: {
         label: n.label,
@@ -136,7 +181,7 @@ function toReactFlowNodes(
   });
 }
 
-function toReactFlowEdges(
+function toGraphEdges(
   graphEdges: GraphEdge[],
   selectedId: string | null | undefined,
   connectedIds: Set<string> | undefined
@@ -156,13 +201,177 @@ function toReactFlowEdges(
       source: e.source,
       target: e.target,
       style: {
-        stroke: isHighlighted ? "#3B82F6" : isDimmed ? "#1A1A1E" : "#2A2A2E",
-        strokeWidth: isHighlighted ? 1.5 : 1,
-        opacity: isDimmed ? 0.25 : 1,
+        stroke: isHighlighted ? "#5B9FFF" : isDimmed ? "#1E1E28" : "#48486A",
+        strokeWidth: isHighlighted ? 2 : 1,
+        opacity: isDimmed ? 0.2 : 1,
       },
       type: "smoothstep",
     };
   });
+}
+
+// ─── Helpers: hierarchical tree layout ───────────────────────────────────────
+
+interface DirTreeNode {
+  id: string;
+  name: string;
+  isDir: boolean;
+  children: DirTreeNode[];
+  graphNode?: GraphNode;
+}
+
+function buildDirTree(graphNodes: GraphNode[]): DirTreeNode {
+  const fileNodes = graphNodes.filter((n) => n.type !== "folder");
+  const root: DirTreeNode = { id: "__root__", name: "root", isDir: true, children: [] };
+  for (const gn of fileNodes) {
+    const parts = gn.path.split("/");
+    let cur = root;
+    for (let i = 0; i < parts.length - 1; i++) {
+      const dirId = `__dir__${parts.slice(0, i + 1).join("/")}`;
+      let found = cur.children.find((c) => c.id === dirId);
+      if (!found) {
+        found = { id: dirId, name: parts[i], isDir: true, children: [] };
+        cur.children.push(found);
+      }
+      cur = found;
+    }
+    cur.children.push({ id: gn.id, name: gn.label, isDir: false, children: [], graphNode: gn });
+  }
+  return root;
+}
+
+const TREE_W = 200;
+const TREE_H = 48;
+const TREE_H_GAP = 32;
+const TREE_V_GAP = 80;
+
+function subtreeWidth(node: DirTreeNode): number {
+  if (!node.children.length) return TREE_W;
+  const total =
+    node.children.reduce((s, c) => s + subtreeWidth(c), 0) +
+    TREE_H_GAP * (node.children.length - 1);
+  return Math.max(TREE_W, total);
+}
+
+function placeSubtree(
+  node: DirTreeNode,
+  cx: number,
+  y: number,
+  pos: Map<string, { x: number; y: number }>
+) {
+  pos.set(node.id, { x: cx - TREE_W / 2, y });
+  if (!node.children.length) return;
+  const total =
+    node.children.reduce((s, c) => s + subtreeWidth(c), 0) +
+    TREE_H_GAP * (node.children.length - 1);
+  let lx = cx - total / 2;
+  for (const child of node.children) {
+    const cw = subtreeWidth(child);
+    placeSubtree(child, lx + cw / 2, y + TREE_H + TREE_V_GAP, pos);
+    lx += cw + TREE_H_GAP;
+  }
+}
+
+function buildHierarchyLayout(
+  graphNodes: GraphNode[],
+  selectedId: string | null | undefined,
+  search: string,
+  langFilter: string | null,
+  importEdges: GraphEdge[]
+): { nodes: Node[]; edges: Edge[] } {
+  const root = buildDirTree(graphNodes);
+  const pos = new Map<string, { x: number; y: number }>();
+
+  // Lay out each top-level child as its own subtree, spaced apart
+  let cx = 0;
+  for (const child of root.children) {
+    const w = subtreeWidth(child);
+    placeSubtree(child, cx + w / 2, 0, pos);
+    cx += w + TREE_H_GAP * 3;
+  }
+
+  const nodes: Node[] = [];
+  const edges: Edge[] = [];
+
+  function walk(node: DirTreeNode, parentId: string | null) {
+    const p = pos.get(node.id);
+    if (!p) return;
+
+    if (node.isDir) {
+      nodes.push({
+        id: node.id,
+        type: "treeDir",
+        position: p,
+        data: { label: node.name },
+        selectable: false,
+        connectable: false,
+        draggable: false,
+      });
+    } else if (node.graphNode) {
+      const gn = node.graphNode;
+      const ms =
+        !search ||
+        gn.label.toLowerCase().includes(search.toLowerCase()) ||
+        gn.id.toLowerCase().includes(search.toLowerCase());
+      const ml = !langFilter || gn.language?.toLowerCase() === langFilter.toLowerCase();
+      nodes.push({
+        id: gn.id,
+        type: "custom",
+        position: p,
+        hidden: !ms || !ml,
+        data: {
+          label: gn.label,
+          type: gn.type,
+          language: gn.language,
+          role: gn.role,
+          selected: gn.id === selectedId,
+          dimmed: false,
+        },
+      });
+    }
+
+    // Branch edge: parent → this node
+    if (parentId) {
+      edges.push({
+        id: `__branch__${parentId}--${node.id}`,
+        source: parentId,
+        target: node.id,
+        type: "smoothstep",
+        style: {
+          stroke: node.isDir ? "#5050A0" : "#404068",
+          strokeWidth: node.isDir ? 2 : 1.5,
+          opacity: 0.9,
+        },
+      });
+    }
+
+    for (const child of node.children) walk(child, node.id);
+  }
+
+  for (const child of root.children) walk(child, null);
+
+  // Overlay import edges for the selected node (dashed blue)
+  if (selectedId) {
+    for (const e of importEdges) {
+      if (e.source === selectedId || e.target === selectedId) {
+        edges.push({
+          id: `__import__${e.id}`,
+          source: e.source,
+          target: e.target,
+          type: "smoothstep",
+          style: {
+            stroke: "#5B9FFF",
+            strokeWidth: 2,
+            strokeDasharray: "6 4",
+            opacity: 0.85,
+          },
+          zIndex: 10,
+        });
+      }
+    }
+  }
+
+  return { nodes, edges };
 }
 
 // ─── Stats panel ──────────────────────────────────────────────────────────────
@@ -204,57 +413,39 @@ function StatsPanel({
     <div className="absolute top-10 right-2 z-10 w-64 bg-[#111114] border border-[#2A2A2E] rounded-lg shadow-2xl overflow-hidden text-[11px]">
       <div className="flex items-center justify-between px-3 py-2 border-b border-[#2A2A2E]">
         <span className="text-xs font-semibold text-white">Graph stats</span>
-        <button
-          onClick={onClose}
-          className="text-[#4A4A5A] hover:text-white transition-colors"
-        >
+        <button onClick={onClose} className="text-[#4A4A5A] hover:text-white transition-colors">
           <X className="w-3.5 h-3.5" />
         </button>
       </div>
 
       <div className="p-3 space-y-4 max-h-80 overflow-y-auto">
         <div className="grid grid-cols-2 gap-2">
-          <div className="bg-[#0B0B0C] rounded p-2">
-            <p className="text-[#4A4A5A] mb-0.5">Files</p>
-            <p className="text-white font-semibold">
-              {nodes.filter((n) => n.type !== "folder").length}
-            </p>
-          </div>
-          <div className="bg-[#0B0B0C] rounded p-2">
-            <p className="text-[#4A4A5A] mb-0.5">Dependencies</p>
-            <p className="text-white font-semibold">{edges.length}</p>
-          </div>
-          <div className="bg-[#0B0B0C] rounded p-2">
-            <p className="text-[#4A4A5A] mb-0.5">Orphan files</p>
-            <p className="text-yellow-400 font-semibold">{stats.orphans.length}</p>
-          </div>
-          <div className="bg-[#0B0B0C] rounded p-2">
-            <p className="text-[#4A4A5A] mb-0.5">Avg. imports</p>
-            <p className="text-white font-semibold">
-              {nodes.filter((n) => n.type !== "folder").length > 0
-                ? (
-                    edges.length /
-                    nodes.filter((n) => n.type !== "folder").length
-                  ).toFixed(1)
-                : "0"}
-            </p>
-          </div>
+          {[
+            { label: "Files", value: nodes.filter((n) => n.type !== "folder").length, color: "text-white" },
+            { label: "Dependencies", value: edges.length, color: "text-white" },
+            { label: "Orphan files", value: stats.orphans.length, color: "text-yellow-400" },
+            {
+              label: "Avg. imports",
+              value: nodes.filter((n) => n.type !== "folder").length > 0
+                ? (edges.length / nodes.filter((n) => n.type !== "folder").length).toFixed(1)
+                : "0",
+              color: "text-white",
+            },
+          ].map(({ label, value, color }) => (
+            <div key={label} className="bg-[#0B0B0C] rounded p-2">
+              <p className="text-[#4A4A5A] mb-0.5">{label}</p>
+              <p className={`font-semibold ${color}`}>{value}</p>
+            </div>
+          ))}
         </div>
 
         {stats.mostImported.length > 0 && (
           <div>
-            <p className="text-[#4A4A5A] uppercase tracking-wider mb-1.5">
-              Most imported
-            </p>
+            <p className="text-[#4A4A5A] uppercase tracking-wider mb-1.5">Most imported</p>
             <div className="space-y-1">
               {stats.mostImported.map(({ node, count }) => (
-                <div
-                  key={node.id}
-                  className="flex items-center justify-between gap-2"
-                >
-                  <span className="text-[#CCCCCC] truncate font-mono">
-                    {node.label}
-                  </span>
+                <div key={node.id} className="flex items-center justify-between gap-2">
+                  <span className="text-[#CCCCCC] truncate font-mono">{node.label}</span>
                   <span className="text-blue-400 shrink-0">{count}×</span>
                 </div>
               ))}
@@ -264,18 +455,11 @@ function StatsPanel({
 
         {stats.mostImporting.length > 0 && (
           <div>
-            <p className="text-[#4A4A5A] uppercase tracking-wider mb-1.5">
-              Heaviest importers
-            </p>
+            <p className="text-[#4A4A5A] uppercase tracking-wider mb-1.5">Heaviest importers</p>
             <div className="space-y-1">
               {stats.mostImporting.map(({ node, count }) => (
-                <div
-                  key={node.id}
-                  className="flex items-center justify-between gap-2"
-                >
-                  <span className="text-[#CCCCCC] truncate font-mono">
-                    {node.label}
-                  </span>
+                <div key={node.id} className="flex items-center justify-between gap-2">
+                  <span className="text-[#CCCCCC] truncate font-mono">{node.label}</span>
                   <span className="text-orange-400 shrink-0">{count} deps</span>
                 </div>
               ))}
@@ -286,21 +470,14 @@ function StatsPanel({
         {stats.orphans.length > 0 && (
           <div>
             <p className="text-[#4A4A5A] uppercase tracking-wider mb-1.5">
-              Isolated files ({stats.orphans.length})
+              Isolated ({stats.orphans.length})
             </p>
             <div className="space-y-1">
               {stats.orphans.slice(0, 5).map((node) => (
-                <div
-                  key={node.id}
-                  className="text-[#6A6A7A] font-mono truncate"
-                >
-                  {node.label}
-                </div>
+                <div key={node.id} className="text-[#6A6A7A] font-mono truncate">{node.label}</div>
               ))}
               {stats.orphans.length > 5 && (
-                <p className="text-[#4A4A5A]">
-                  +{stats.orphans.length - 5} more
-                </p>
+                <p className="text-[#4A4A5A]">+{stats.orphans.length - 5} more</p>
               )}
             </div>
           </div>
@@ -310,18 +487,17 @@ function StatsPanel({
   );
 }
 
-// ─── Fit-view button (must render inside ReactFlow) ───────────────────────────
+// ─── Fit-view button ───────────────────────────────────────────────────────────
 
 function FitViewButton() {
   const { fitView } = useReactFlow();
   return (
     <button
-      onClick={() => fitView({ padding: 0.15, duration: 400 })}
-      className="flex items-center gap-1 px-2 py-1 text-[10px] text-[#8A8A9A] hover:text-white bg-[#111114] border border-[#2A2A2E] rounded transition-colors"
+      onClick={() => fitView({ padding: 0.2, duration: 400 })}
+      className="flex items-center gap-1.5 px-2.5 py-1.5 text-xs text-[#8888A8] hover:text-white bg-[#16161E] border border-[#38384A] rounded-lg transition-colors hover:border-[#5050A0]"
       title="Fit all nodes in view"
     >
-      <Maximize2 className="w-3 h-3" />
-      Fit
+      <Maximize2 className="w-3.5 h-3.5" />Fit
     </button>
   );
 }
@@ -342,25 +518,61 @@ function LangFilter({
     <div className="flex items-center gap-1 overflow-x-auto">
       <button
         onClick={() => onChange(null)}
-        className={`px-2 py-0.5 rounded text-[10px] border transition-colors shrink-0 ${
+        className={`px-2.5 py-1 rounded-lg text-xs border transition-colors shrink-0 font-medium ${
           !active
-            ? "border-blue-500 bg-blue-600/20 text-blue-300"
-            : "border-[#2A2A2E] text-[#4A4A5A] hover:text-white"
+            ? "border-blue-400/60 bg-blue-500/20 text-blue-300"
+            : "border-[#38384A] text-[#7878A0] hover:text-white hover:border-[#5050A0]"
         }`}
       >
         All
       </button>
-      {languages.map((lang) => (
+      {languages.map((lang) => {
+        const color = LANG_COLORS[lang];
+        return (
+          <button
+            key={lang}
+            onClick={() => onChange(active === lang ? null : lang)}
+            className={`px-2.5 py-1 rounded-lg text-xs border transition-colors shrink-0 font-medium ${
+              active === lang
+                ? "border-blue-400/60 bg-blue-500/20 text-blue-300"
+                : "border-[#38384A] text-[#7878A0] hover:text-white hover:border-[#5050A0]"
+            }`}
+          >
+            {color && <span className="inline-block w-1.5 h-1.5 rounded-full mr-1 align-middle" style={{ background: color }} />}
+            {lang}
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// ─── View mode toggle ─────────────────────────────────────────────────────────
+
+function ViewToggle({
+  mode,
+  onChange,
+}: {
+  mode: ViewMode;
+  onChange: (m: ViewMode) => void;
+}) {
+  return (
+    <div className="flex items-center gap-0.5 bg-[#0E0E16] border border-[#38384A] rounded-lg p-0.5">
+      {(["graph", "tree"] as ViewMode[]).map((m) => (
         <button
-          key={lang}
-          onClick={() => onChange(active === lang ? null : lang)}
-          className={`px-2 py-0.5 rounded text-[10px] border transition-colors shrink-0 ${
-            active === lang
-              ? "border-blue-500 bg-blue-600/20 text-blue-300"
-              : "border-[#2A2A2E] text-[#4A4A5A] hover:text-white"
+          key={m}
+          onClick={() => onChange(m)}
+          className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-md text-xs font-medium transition-colors ${
+            mode === m
+              ? "bg-[#252535] text-white shadow-sm"
+              : "text-[#6868A0] hover:text-[#A0A0C8]"
           }`}
         >
-          {lang}
+          {m === "graph" ? (
+            <><Network className="w-3.5 h-3.5" />Graph</>
+          ) : (
+            <><GitBranch className="w-3.5 h-3.5" />Tree</>
+          )}
         </button>
       ))}
     </div>
@@ -378,6 +590,7 @@ function GraphViewInner({
   const [search, setSearch] = useState("");
   const [langFilter, setLangFilter] = useState<string | null>(null);
   const [showStats, setShowStats] = useState(false);
+  const [viewMode, setViewMode] = useState<ViewMode>("graph");
 
   const connectedIds = useMemo(
     () =>
@@ -395,27 +608,49 @@ function GraphViewInner({
     return [...langs].sort();
   }, [graphNodes]);
 
-  const [nodes, setNodes, onNodesChange] = useNodesState(
-    toReactFlowNodes(graphNodes, selectedNodeId, connectedIds, search, langFilter)
-  );
-  const [edges, setEdges, onEdgesChange] = useEdgesState(
-    toReactFlowEdges(graphEdges, selectedNodeId, connectedIds)
-  );
+  // Compute ReactFlow nodes/edges based on view mode
+  const [rfNodes, rfEdges] = useMemo(() => {
+    if (viewMode === "tree") {
+      const { nodes, edges } = buildHierarchyLayout(
+        graphNodes, selectedNodeId, search, langFilter, graphEdges
+      );
+      return [nodes, edges];
+    }
+    return [
+      toGraphNodes(graphNodes, selectedNodeId, connectedIds, search, langFilter),
+      toGraphEdges(graphEdges, selectedNodeId, connectedIds),
+    ];
+  }, [viewMode, graphNodes, selectedNodeId, connectedIds, search, langFilter, graphEdges]);
 
-  // Re-sync when filters or selection change
+  const [nodes, setNodes, onNodesChange] = useNodesState(rfNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(rfEdges);
+  const { fitView } = useReactFlow();
+
+  // Sync computed nodes/edges into ReactFlow state
   useEffect(() => {
-    setNodes(
-      toReactFlowNodes(
-        graphNodes,
-        selectedNodeId,
-        connectedIds,
-        search,
-        langFilter
-      )
-    );
-    setEdges(toReactFlowEdges(graphEdges, selectedNodeId, connectedIds));
+    setNodes(rfNodes);
+    setEdges(rfEdges);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [graphNodes, graphEdges, selectedNodeId, connectedIds, search, langFilter]);
+  }, [rfNodes, rfEdges]);
+
+  // Fit view smoothly whenever viewMode changes or initial data loads
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      fitView({ padding: 0.18, duration: 500 });
+    }, 80);
+    return () => clearTimeout(timer);
+  }, [viewMode, fitView]);
+
+  // Also fit when nodes first arrive
+  useEffect(() => {
+    if (rfNodes.length > 0) {
+      const timer = setTimeout(() => {
+        fitView({ padding: 0.18, duration: 400 });
+      }, 120);
+      return () => clearTimeout(timer);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [rfNodes.length > 0]);
 
   const onConnect = useCallback(
     (connection: Connection) => setEdges((eds) => addEdge(connection, eds)),
@@ -430,52 +665,48 @@ function GraphViewInner({
     [graphNodes, onNodeClick]
   );
 
-  const visibleNodeCount = nodes.filter((n) => !n.hidden).length;
+  const visibleNodeCount = nodes.filter((n) => !n.hidden && n.type !== "treeDir").length;
 
   return (
     <div className="w-full h-full flex flex-col bg-[#0B0B0C]">
       {/* Toolbar */}
-      <div className="flex items-center gap-2 px-3 py-2 border-b border-[#2A2A2E] shrink-0 flex-wrap gap-y-1.5">
+      <div className="flex items-center gap-2 px-3 py-2 border-b border-[#2A2A2E] shrink-0 flex-wrap gap-y-1.5 bg-[#0E0E16]">
         {/* Search */}
-        <div className="flex items-center gap-1.5 h-7 px-2 bg-[#111114] border border-[#2A2A2E] rounded flex-1 min-w-36 max-w-64">
-          <Search className="w-3 h-3 text-[#4A4A5A] shrink-0" />
+        <div className="flex items-center gap-1.5 h-8 px-2.5 bg-[#16161E] border border-[#38384A] rounded-lg flex-1 min-w-36 max-w-56">
+          <Search className="w-3.5 h-3.5 text-[#6868A0] shrink-0" />
           <input
             type="text"
             placeholder="Search files…"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
-            className="bg-transparent text-[11px] text-white placeholder:text-[#3A3A4A] outline-none w-full"
+            className="bg-transparent text-xs text-white placeholder:text-[#484868] outline-none w-full"
           />
           {search && (
-            <button
-              onClick={() => setSearch("")}
-              className="text-[#4A4A5A] hover:text-white"
-            >
-              <X className="w-3 h-3" />
+            <button onClick={() => setSearch("")} className="text-[#6868A0] hover:text-white">
+              <X className="w-3.5 h-3.5" />
             </button>
           )}
         </div>
 
-        {/* Language filter pills */}
-        <LangFilter
-          languages={languages}
-          active={langFilter}
-          onChange={setLangFilter}
-        />
+        {/* Language filter */}
+        <LangFilter languages={languages} active={langFilter} onChange={setLangFilter} />
 
         {/* Right controls */}
         <div className="relative ml-auto flex items-center gap-1.5">
+          {/* View toggle */}
+          <ViewToggle mode={viewMode} onChange={setViewMode} />
+
           <button
             onClick={() => setShowStats((v) => !v)}
-            className={`flex items-center gap-1 px-2 py-1 text-[10px] border rounded transition-colors ${
+            className={`flex items-center gap-1.5 px-2.5 py-1.5 text-xs border rounded-lg transition-colors ${
               showStats
-                ? "border-blue-500/50 bg-blue-600/10 text-blue-400"
-                : "border-[#2A2A2E] text-[#4A4A5A] hover:text-white bg-[#111114]"
+                ? "border-blue-400/50 bg-blue-500/15 text-blue-300"
+                : "border-[#38384A] text-[#8888A8] hover:text-white bg-[#16161E] hover:border-[#5050A0]"
             }`}
           >
-            <BarChart2 className="w-3 h-3" />
-            Stats
+            <BarChart2 className="w-3.5 h-3.5" />Stats
           </button>
+
           <FitViewButton />
 
           {showStats && (
@@ -488,6 +719,25 @@ function GraphViewInner({
         </div>
       </div>
 
+      {/* Tree mode legend */}
+      {viewMode === "tree" && (
+        <div className="flex items-center gap-4 px-3 py-2 border-b border-[#2A2A3A] bg-[#0C0C14] shrink-0">
+          <span className="text-xs text-[#6868A0]">
+            Folder hierarchy · Click a file to inspect
+          </span>
+          <div className="ml-auto flex items-center gap-4">
+            <span className="flex items-center gap-1.5 text-xs text-[#7878A0]">
+              <span className="w-4 border-t-2 border-[#5050A0] inline-block" />
+              Folder branch
+            </span>
+            <span className="flex items-center gap-1.5 text-xs text-blue-400">
+              <span className="w-4 border-t-2 border-dashed border-blue-400 inline-block" />
+              Imports (selected)
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* Graph */}
       <div className="flex-1 relative">
         <ReactFlow
@@ -499,34 +749,44 @@ function GraphViewInner({
           onNodeClick={handleNodeClick}
           nodeTypes={nodeTypes}
           fitView
-          fitViewOptions={{ padding: 0.15 }}
-          minZoom={0.05}
+          fitViewOptions={{ padding: 0.18, includeHiddenNodes: false }}
+          minZoom={0.02}
           maxZoom={4}
+          // Scroll/swipe = pan freely in any direction (like Figma/Maps)
+          // Ctrl+scroll or pinch = zoom — no translateExtent cap
+          panOnDrag
+          panOnScroll
+          panOnScrollMode={PanOnScrollMode.Free}
+          zoomOnScroll={false}
+          zoomOnPinch
+          selectNodesOnDrag={false}
+          elevateEdgesOnSelect
+          translateExtent={[[-100000, -100000], [100000, 100000]]}
           className="bg-[#0B0B0C]"
+          proOptions={{ hideAttribution: true }}
         >
           <Background
             variant={BackgroundVariant.Dots}
-            color="#1E1E22"
-            gap={20}
-            size={1}
+            color="#38384A"
+            gap={24}
+            size={1.5}
           />
-          <Controls className="bg-[#111114] border-[#2A2A2E]" />
+          <Controls className="bg-[#16161E] border-[#38384A]" />
           <MiniMap
-            nodeColor="#18181C"
-            maskColor="rgba(11,11,12,0.85)"
-            style={{ background: "#111114", border: "1px solid #2A2A2E" }}
+            nodeColor="#38385A"
+            maskColor="rgba(10,10,16,0.85)"
+            style={{ background: "#12121A", border: "1px solid #38384A" }}
           />
           <Panel
             position="bottom-left"
-            className="text-[10px] text-[#4A4A5A] bg-[#111114] border border-[#2A2A2E] rounded px-2 py-1"
+            className="text-xs text-[#8888A8] bg-[#12121A] border border-[#38384A] rounded-lg px-3 py-1.5"
           >
             {search || langFilter
-              ? `${visibleNodeCount} of ${graphNodes.length} files · ${graphEdges.length} deps`
-              : `${graphNodes.length} files · ${graphEdges.length} deps`}
+              ? `${visibleNodeCount} of ${graphNodes.filter((n) => n.type !== "folder").length} files · ${graphEdges.length} deps`
+              : `${graphNodes.filter((n) => n.type !== "folder").length} files · ${graphEdges.length} deps`}
             {selectedNodeId && (
               <span className="ml-2 text-[#6A6A7A]">
-                · click node again or press{" "}
-                <kbd className="font-mono">Esc</kbd> to clear
+                · <kbd className="font-mono">Esc</kbd> to clear
               </span>
             )}
           </Panel>
