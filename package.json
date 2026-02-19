@@ -14,6 +14,7 @@
     "worker": "node dist/worker/index.js"
   },
   "dependencies": {
+    "@auth/prisma-adapter": "^2.11.1",
     "@prisma/client": "^7.4.0",
     "@reactflow/node-resizer": "^2.2.14",
     "class-variance-authority": "^0.7.1",
