@@ -32,7 +32,7 @@ interface ExplainPanelProps {
   outgoingCount?: number;
   edges?: GraphEdge[];
   nodes?: GraphNode[];
-  repo?: { owner: string; name: string } | null;
+  repo?: { owner: string; name: string; fullName?: string; language?: string } | null;
   onNodeSelect?: (nodeId: string) => void;
   totalNodes?: number;
 }
@@ -324,17 +324,179 @@ export function ExplainPanel({
     { id: "code", label: "Code", Icon: Code2 },
   ];
 
-  // ─── Empty state ─────────────────────────────────────────────────────────────
+  // ─── Empty state / Codebase overview ─────────────────────────────────────────
   if (!node) {
+    const fileNodes = nodes.filter((n) => n.type !== "folder");
+    const hasData = fileNodes.length > 0;
+
+    if (!hasData) {
+      return (
+        <div className="h-full flex flex-col items-center justify-center text-center px-6 gap-3">
+          <div className="w-12 h-12 rounded-full bg-[#111114] border border-[#2A2A2E] flex items-center justify-center">
+            <GitBranch className="w-5 h-5 text-[#4A4A5A]" />
+          </div>
+          <div>
+            <p className="text-xs font-medium text-[#6A6A7A]">No file selected</p>
+            <p className="text-[11px] text-[#4A4A5A] mt-1">Click any node in the graph to inspect it</p>
+          </div>
+        </div>
+      );
+    }
+
+    // Compute codebase stats
+    const incomingMap: Record<string, number> = {};
+    const outgoingMap: Record<string, number> = {};
+    for (const e of edges) {
+      incomingMap[e.target] = (incomingMap[e.target] ?? 0) + 1;
+      outgoingMap[e.source] = (outgoingMap[e.source] ?? 0) + 1;
+    }
+
+    const langCounts: Record<string, number> = {};
+    for (const n of fileNodes) {
+      if (n.language) langCounts[n.language] = (langCounts[n.language] ?? 0) + 1;
+    }
+    const sortedLangs = Object.entries(langCounts).sort((a, b) => b[1] - a[1]);
+    const maxLangCount = sortedLangs[0]?.[1] ?? 1;
+
+    const hubs = fileNodes
+      .map((n) => ({ node: n, count: incomingMap[n.id] ?? 0 }))
+      .filter((x) => x.count > 0)
+      .sort((a, b) => b.count - a.count)
+      .slice(0, 5);
+
+    const entryPoints = fileNodes
+      .filter((n) => !incomingMap[n.id] && outgoingMap[n.id])
+      .slice(0, 4);
+
+    const orphanCount = fileNodes.filter((n) => !incomingMap[n.id] && !outgoingMap[n.id]).length;
+    const avgImports = fileNodes.length > 0
+      ? (edges.length / fileNodes.length).toFixed(1)
+      : "0";
+
     return (
-      <div className="h-full flex flex-col items-center justify-center text-center px-6 gap-3">
-        <div className="w-12 h-12 rounded-full bg-[#111114] border border-[#2A2A2E] flex items-center justify-center">
-          <GitBranch className="w-5 h-5 text-[#4A4A5A]" />
-        </div>
-        <div>
-          <p className="text-xs font-medium text-[#6A6A7A]">No file selected</p>
-          <p className="text-[11px] text-[#4A4A5A] mt-1">Click any node in the graph to inspect it</p>
-        </div>
+      <div className="h-full overflow-y-auto">
+        <motion.div
+          initial={{ opacity: 0, y: 6 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.2 }}
+          className="p-3 flex flex-col gap-3"
+        >
+          {/* Repo header */}
+          <div className="bg-[#111114] border border-[#2A2A2E] rounded-lg p-3">
+            <div className="flex items-center gap-2 mb-1">
+              <GitBranch className="w-3.5 h-3.5 text-blue-400 shrink-0" />
+              <p className="text-xs font-semibold text-white truncate">
+                {repo?.fullName ?? (repo ? `${repo.owner}/${repo.name}` : "Repository")}
+              </p>
+            </div>
+            {repo?.language && (
+              <span
+                className="text-[10px] px-1.5 py-0.5 rounded font-medium"
+                style={{
+                  background: `${LANG_COLORS[repo.language] ?? "#2A2A2E"}18`,
+                  color: LANG_COLORS[repo.language] ?? "#8A8A9A",
+                  border: `1px solid ${LANG_COLORS[repo.language] ?? "#2A2A2E"}40`,
+                }}
+              >
+                {repo.language}
+              </span>
+            )}
+          </div>
+
+          {/* Key metrics */}
+          <div className="grid grid-cols-2 gap-2">
+            {[
+              { label: "Files", value: fileNodes.length, color: "#3B82F6" },
+              { label: "Dependencies", value: edges.length, color: "#10b981" },
+              { label: "Avg imports", value: avgImports, color: "#a78bfa" },
+              { label: "Isolated", value: orphanCount, color: orphanCount > 0 ? "#f59e0b" : "#6A6A7A" },
+            ].map(({ label, value, color }) => (
+              <div key={label} className="bg-[#111114] border border-[#2A2A2E] rounded-lg p-2.5 flex flex-col items-center">
+                <span className="text-xl font-bold tabular-nums" style={{ color }}>{value}</span>
+                <span className="text-[9px] text-[#6A6A7A] uppercase tracking-wider mt-0.5">{label}</span>
+              </div>
+            ))}
+          </div>
+
+          {/* Language breakdown */}
+          {sortedLangs.length > 0 && (
+            <div className="bg-[#111114] border border-[#2A2A2E] rounded-lg p-3">
+              <p className="text-[9px] text-[#4A4A5A] uppercase tracking-widest mb-2">Languages</p>
+              <div className="space-y-2">
+                {sortedLangs.slice(0, 5).map(([lang, count]) => {
+                  const pct = Math.round((count / fileNodes.length) * 100);
+                  const color = LANG_COLORS[lang] ?? "#8A8A9A";
+                  return (
+                    <div key={lang}>
+                      <div className="flex justify-between items-center mb-1">
+                        <span className="text-[10px] text-[#C9C9D4]">{lang}</span>
+                        <span className="text-[10px] text-[#6A6A7A]">{count} files · {pct}%</span>
+                      </div>
+                      <div className="h-1.5 bg-[#1A1A1E] rounded-full overflow-hidden">
+                        <motion.div
+                          className="h-full rounded-full"
+                          style={{ background: color }}
+                          initial={{ width: 0 }}
+                          animate={{ width: `${Math.round((count / maxLangCount) * 100)}%` }}
+                          transition={{ duration: 0.6, ease: "easeOut" }}
+                        />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Hub files */}
+          {hubs.length > 0 && (
+            <div className="bg-[#111114] border border-[#2A2A2E] rounded-lg p-3">
+              <div className="flex items-center gap-1.5 mb-2">
+                <Star className="w-3 h-3 text-yellow-400" />
+                <p className="text-[9px] text-[#4A4A5A] uppercase tracking-widest">Most imported</p>
+              </div>
+              <div className="space-y-0.5">
+                {hubs.map(({ node: n, count }) => (
+                  <button
+                    key={n.id}
+                    onClick={() => onNodeSelect?.(n.id)}
+                    className="w-full flex items-center justify-between gap-2 px-2 py-1.5 hover:bg-[#1A1A1E] rounded transition-colors group"
+                  >
+                    <span className="text-[11px] text-[#C9C9D4] group-hover:text-white truncate font-mono">{n.label}</span>
+                    <span className="text-[10px] text-blue-400 shrink-0 font-semibold">{count}×</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Entry points */}
+          {entryPoints.length > 0 && (
+            <div className="bg-[#111114] border border-[#2A2A2E] rounded-lg p-3">
+              <div className="flex items-center gap-1.5 mb-2">
+                <Zap className="w-3 h-3 text-green-400" />
+                <p className="text-[9px] text-[#4A4A5A] uppercase tracking-widest">Entry points</p>
+              </div>
+              <div className="space-y-0.5">
+                {entryPoints.map((n) => (
+                  <button
+                    key={n.id}
+                    onClick={() => onNodeSelect?.(n.id)}
+                    className="w-full flex items-center gap-2 px-2 py-1.5 hover:bg-[#1A1A1E] rounded transition-colors group"
+                  >
+                    <ArrowRight className="w-3 h-3 text-green-400 shrink-0" />
+                    <span className="text-[11px] text-[#C9C9D4] group-hover:text-white truncate font-mono">{n.label}</span>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* Hint */}
+          <p className="text-[10px] text-[#4A4A5A] text-center">
+            Click any node in the graph to inspect its code and dependencies
+          </p>
+        </motion.div>
       </div>
     );
   }

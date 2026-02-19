@@ -388,7 +388,7 @@ function VisualiserContent() {
             outgoingCount={outgoingCount}
             edges={analysis?.artifact?.edges ?? []}
             nodes={analysis?.artifact?.nodes ?? []}
-            repo={analysis?.repo ? { owner: analysis.repo.owner, name: analysis.repo.name } : null}
+            repo={analysis?.repo ? { owner: analysis.repo.owner, name: analysis.repo.name, fullName: analysis.repo.fullName, language: analysis.repo.language } : null}
             onNodeSelect={handleNodeSelect}
             totalNodes={analysis?.artifact?.nodes.length ?? 1}
           />
