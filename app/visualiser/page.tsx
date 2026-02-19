@@ -18,6 +18,7 @@ import { ExplainPanel } from "@/components/visualiser/ExplainPanel";
 import { GuestLimitModal } from "@/components/visualiser/GuestLimitModal";
 import { ScreenshotButton } from "@/components/visualiser/ScreenshotButton";
 import type { GraphNode, GraphEdge, FileTreeNode } from "@/lib/graph-builder";
+import { guestHistory } from "@/lib/cache";
 
 type Tab = "graph" | "files" | "explain";
 type AnalysisStatus = "idle" | "pending" | "processing" | "completed" | "failed";
@@ -84,6 +85,18 @@ function VisualiserContent() {
           if (data.status === "COMPLETED" && data.artifact) {
             setAnalysis(data);
             setStatus("completed");
+            // Save to local guest history (best-effort, works offline too)
+            guestHistory.add({
+              id: data.id,
+              repoUrl: `https://github.com/${data.repo.fullName}`,
+              repoFullName: data.repo.fullName,
+              language: data.repo.language ?? null,
+              description: null,
+              status: "COMPLETED",
+              createdAt: new Date().toISOString(),
+              nodeCount: data.artifact.nodes.length,
+              edgeCount: data.artifact.edges.length,
+            });
             return;
           }
 

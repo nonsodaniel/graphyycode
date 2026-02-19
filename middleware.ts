@@ -1,7 +1,8 @@
 import { auth } from "@/lib/auth";
 import { NextResponse } from "next/server";
 
-const PROTECTED_ROUTES = ["/dashboard", "/feed", "/admin"];
+// /dashboard is intentionally NOT protected — guests see local history there
+const PROTECTED_ROUTES = ["/feed", "/admin"];
 const ADMIN_ROUTES = ["/admin"];
 
 export default auth((req) => {
@@ -29,5 +30,5 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ["/dashboard/:path*", "/feed/:path*", "/admin/:path*"],
+  matcher: ["/feed/:path*", "/admin/:path*"],
 };
