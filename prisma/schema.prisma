@@ -1,0 +1,226 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum AnalysisStatus {
+  PENDING
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+model User {
+  id            String    @id @default(cuid())
+  name          String?
+  email         String    @unique
+  emailVerified DateTime?
+  image         String?
+  role          Role      @default(USER)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  // Auth
+  accounts      Account[]
+  sessions      Session[]
+
+  // App relations
+  analyses      Analysis[]
+  screenshots   Screenshot[]
+  activityEvents ActivityEvent[]
+  auditLogs     AuditLog[]      @relation("AuditTarget")
+  auditActions  AuditLog[]      @relation("AuditActor")
+
+  // Social
+  following     Follow[]  @relation("Follower")
+  followers     Follow[]  @relation("Following")
+
+  @@map("users")
+}
+
+model Account {
+  id                String  @id @default(cuid())
+  userId            String
+  type              String
+  provider          String
+  providerAccountId String
+  refresh_token     String? @db.Text
+  access_token      String? @db.Text
+  expires_at        Int?
+  token_type        String?
+  scope             String?
+  id_token          String? @db.Text
+  session_state     String?
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([provider, providerAccountId])
+  @@map("accounts")
+}
+
+model Session {
+  id           String   @id @default(cuid())
+  sessionToken String   @unique
+  userId       String
+  expires      DateTime
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@map("sessions")
+}
+
+model VerificationToken {
+  identifier String
+  token      String   @unique
+  expires    DateTime
+
+  @@unique([identifier, token])
+  @@map("verification_tokens")
+}
+
+model Follow {
+  id          String   @id @default(cuid())
+  followerId  String
+  followingId String
+  createdAt   DateTime @default(now())
+
+  follower  User @relation("Follower", fields: [followerId], references: [id], onDelete: Cascade)
+  following User @relation("Following", fields: [followingId], references: [id], onDelete: Cascade)
+
+  @@unique([followerId, followingId])
+  @@map("follows")
+}
+
+model Repo {
+  id          String   @id @default(cuid())
+  owner       String
+  name        String
+  fullName    String   @unique
+  description String?
+  language    String?
+  stars       Int      @default(0)
+  forks       Int      @default(0)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  analyses Analysis[]
+  topRepo  TopRepo?
+
+  @@map("repos")
+}
+
+model Analysis {
+  id        String         @id @default(cuid())
+  repoId    String
+  userId    String?
+  guestId   String?
+  status    AnalysisStatus @default(PENDING)
+  error     String?
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+
+  repo      Repo           @relation(fields: [repoId], references: [id], onDelete: Cascade)
+  user      User?          @relation(fields: [userId], references: [id], onDelete: SetNull)
+  artifact  GraphArtifact?
+  screenshots Screenshot[]
+  activityEvents ActivityEvent[]
+
+  @@map("analyses")
+}
+
+model GraphArtifact {
+  id         String   @id @default(cuid())
+  analysisId String   @unique
+  nodes      Json
+  edges      Json
+  fileTree   Json
+  callGraph  Json?
+  fileRoles  Json?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  analysis Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+
+  @@map("graph_artifacts")
+}
+
+model ActivityEvent {
+  id         String   @id @default(cuid())
+  userId     String
+  analysisId String?
+  type       String   // e.g. "ANALYSED", "RE_ANALYSED", "SCREENSHOT", "SHARED"
+  metadata   Json?
+  createdAt  DateTime @default(now())
+
+  user     User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  analysis Analysis? @relation(fields: [analysisId], references: [id], onDelete: SetNull)
+
+  @@map("activity_events")
+}
+
+model AuditLog {
+  id         String   @id @default(cuid())
+  actorId    String
+  targetId   String?
+  action     String
+  resource   String
+  resourceId String?
+  metadata   Json?
+  ipAddress  String?
+  createdAt  DateTime @default(now())
+
+  actor  User  @relation("AuditActor", fields: [actorId], references: [id], onDelete: Cascade)
+  target User? @relation("AuditTarget", fields: [targetId], references: [id], onDelete: SetNull)
+
+  @@map("audit_logs")
+}
+
+model TopRepo {
+  id          String   @id @default(cuid())
+  repoId      String   @unique
+  rank        Int
+  featuredAt  DateTime @default(now())
+  curatedBy   String?
+  description String?
+
+  repo Repo @relation(fields: [repoId], references: [id], onDelete: Cascade)
+
+  @@map("top_repos")
+}
+
+model GuestUsage {
+  id         String   @id @default(cuid())
+  deviceId   String
+  ipAddress  String?
+  count      Int      @default(1)
+  lastUsedAt DateTime @default(now())
+  createdAt  DateTime @default(now())
+
+  @@unique([deviceId])
+  @@map("guest_usage")
+}
+
+model Screenshot {
+  id         String   @id @default(cuid())
+  analysisId String
+  userId     String?
+  imageUrl   String?
+  imageData  String?  @db.Text
+  caption    String?
+  isPublic   Boolean  @default(false)
+  shareToken String?  @unique
+  createdAt  DateTime @default(now())
+
+  analysis Analysis @relation(fields: [analysisId], references: [id], onDelete: Cascade)
+  user     User?    @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@map("screenshots")
+}
