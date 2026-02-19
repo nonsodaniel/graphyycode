@@ -11,9 +11,17 @@ test.describe("Landing page", () => {
     ).toBeVisible();
   });
 
-  test("has working navigation links", async ({ page }) => {
-    await expect(page.getByText("Features")).toBeVisible();
-    await expect(page.getByText("How it works")).toBeVisible();
+  test("has working navigation links", async ({ page, viewport }) => {
+    // On mobile viewports, nav links are hidden behind the hamburger menu
+    if (viewport && viewport.width < 768) {
+      await page.getByLabel("Toggle menu").click();
+      await expect(page.getByRole("link", { name: "Features" }).last()).toBeVisible();
+      await expect(page.getByRole("link", { name: "How it works" }).last()).toBeVisible();
+    } else {
+      const nav = page.getByRole("navigation");
+      await expect(nav.getByRole("link", { name: "Features" })).toBeVisible();
+      await expect(nav.getByRole("link", { name: "How it works" })).toBeVisible();
+    }
   });
 
   test("repo input is present", async ({ page }) => {
@@ -28,8 +36,11 @@ test.describe("Landing page", () => {
 
   test("mobile menu works", async ({ page }) => {
     await page.setViewportSize({ width: 375, height: 812 });
+    await page.reload();
     const menuButton = page.getByLabel("Toggle menu");
     await menuButton.click();
-    await expect(page.getByText("Sign in")).toBeVisible();
+    // Sign in appears in the mobile dropdown (outside <nav>), use last() to
+    // target the visible menu item rather than the CSS-hidden desktop one
+    await expect(page.getByRole("link", { name: "Sign in" }).last()).toBeVisible();
   });
 });

@@ -8,7 +8,7 @@ test.describe("Offline page", () => {
 
   test("offline page shows available features list", async ({ page }) => {
     await page.goto("/offline");
-    await expect(page.getByText("Available offline:")).toBeVisible();
+    await expect(page.getByText("Available offline:", { exact: true })).toBeVisible();
     await expect(page.getByText("Previously loaded visualisations")).toBeVisible();
     await expect(page.getByText("Cached dashboard history")).toBeVisible();
   });
