@@ -14,7 +14,24 @@
   --font-mono: var(--font-geist-mono);
 }
 
+/* Class-based dark mode for Tailwind v4 */
+@variant dark (&:where(.dark, .dark *));
+
+/* Light mode (default) */
 :root {
+  --background: #F9F9FB;
+  --foreground: #111113;
+  --border: #E2E2E8;
+  --surface: #FFFFFF;
+  --surface-2: #F3F3F7;
+  --accent: #3B82F6;
+  --accent-foreground: #FFFFFF;
+  --muted: #EDEDF2;
+  --muted-foreground: #6A6A7A;
+}
+
+/* Dark mode */
+.dark {
   --background: #0B0B0C;
   --foreground: #FFFFFF;
   --border: #2A2A2E;
