@@ -16,8 +16,8 @@ import { parseGitHubUrl } from "@/lib/github";
 import { db } from "@/lib/db";
 
 describe("GUEST_LIMIT constant", () => {
-  it("is set to 3", () => {
-    expect(GUEST_LIMIT).toBe(3);
+  it("is set to 5", () => {
+    expect(GUEST_LIMIT).toBe(5);
   });
 });
 
