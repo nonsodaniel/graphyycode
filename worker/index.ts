@@ -1,22 +1,22 @@
+import "dotenv/config";
+
 /**
  * GraphyyCode Background Worker
  *
  * Polls the database for PENDING analyses, fetches GitHub repository files,
  * builds the dependency graph, stores the artifact, and marks analyses COMPLETED.
  *
- * Usage: node dist/worker/index.js
- * Or via: pnpm worker
+ * Usage: pnpm worker
  */
 
 import { PrismaClient } from "@prisma/client";
+import { PrismaPg } from "@prisma/adapter-pg";
+import { Pool } from "pg";
 import { buildGraph } from "../lib/graph-builder";
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-const dbOptions: any = {};
-if (process.env.DATABASE_URL) {
-  dbOptions.datasourceUrl = process.env.DATABASE_URL;
-}
-const db = new PrismaClient(dbOptions);
+const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+const adapter = new PrismaPg(pool);
+const db = new PrismaClient({ adapter });
 
 const POLL_INTERVAL_MS = 5000;
 const MAX_FILES_TO_ANALYSE = 200;
