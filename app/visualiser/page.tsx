@@ -186,6 +186,14 @@ function VisualiserContent() {
     }
   };
 
+  const handleNodeSelect = useCallback((nodeId: string) => {
+    const node = analysis?.artifact?.nodes.find((n) => n.id === nodeId);
+    if (node) {
+      setSelectedNode(node);
+      setSelectedFilePath(node.path);
+    }
+  }, [analysis?.artifact?.nodes]);
+
   const handleFileClick = (path: string) => {
     const node = analysis?.artifact?.nodes.find((n) => n.id === path);
     if (node) {
@@ -370,7 +378,7 @@ function VisualiserContent() {
         <div
           className={`
             ${tab !== "explain" ? "hidden md:block" : "flex-1 md:flex-none"}
-            md:w-64 border-l border-[#2A2A2E] bg-[#0B0B0C] overflow-hidden
+            md:w-72 border-l border-[#2A2A2E] bg-[#0B0B0C] overflow-hidden
           `}
         >
           <ExplainPanel
@@ -378,6 +386,11 @@ function VisualiserContent() {
             fileRoles={analysis?.artifact?.fileRoles ?? {}}
             incomingCount={incomingCount}
             outgoingCount={outgoingCount}
+            edges={analysis?.artifact?.edges ?? []}
+            nodes={analysis?.artifact?.nodes ?? []}
+            repo={analysis?.repo ? { owner: analysis.repo.owner, name: analysis.repo.name } : null}
+            onNodeSelect={handleNodeSelect}
+            totalNodes={analysis?.artifact?.nodes.length ?? 1}
           />
         </div>
       </div>
