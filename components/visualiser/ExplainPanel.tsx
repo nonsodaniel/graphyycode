@@ -27,6 +27,10 @@ import {
   Globe,
   Building2,
   Users,
+  Search,
+  Activity,
+  TrendingUp,
+  X,
 } from "lucide-react";
 import type { GraphNode, GraphEdge } from "@/lib/graph-builder";
 
@@ -243,6 +247,68 @@ function detectTechStack(nodes: GraphNode[]): string[] {
   if (paths.some((p) => p.endsWith("dockerfile") || p.includes("docker-compose")))
     stack.push("Docker");
   return [...new Set(stack)];
+}
+
+// ─── Architecture algorithms ──────────────────────────────────────────────────
+
+// Instability = Ce / (Ca + Ce)  where Ca = afferent (incoming), Ce = efferent (outgoing)
+// 0 = maximally stable (many depend on it), 1 = maximally unstable (depends on many)
+function instability(nodeId: string, edges: GraphEdge[]): number {
+  const ca = edges.filter((e) => e.target === nodeId).length;
+  const ce = edges.filter((e) => e.source === nodeId).length;
+  if (ca + ce === 0) return 0.5;
+  return ce / (ca + ce);
+}
+
+// Tarjan's SCC — finds all groups of files in circular import cycles (size > 1)
+function findCircularGroups(edges: GraphEdge[], fileNodes: GraphNode[]): string[][] {
+  const ids = fileNodes.map((n) => n.id);
+  const adj = new Map<string, string[]>();
+  for (const id of ids) adj.set(id, []);
+  for (const e of edges) {
+    if (adj.has(e.source) && adj.has(e.target)) adj.get(e.source)!.push(e.target);
+  }
+  const index = new Map<string, number>();
+  const lowlink = new Map<string, number>();
+  const onStack = new Set<string>();
+  const stack: string[] = [];
+  const sccs: string[][] = [];
+  let idx = 0;
+
+  function strongconnect(v: string) {
+    index.set(v, idx); lowlink.set(v, idx); idx++;
+    stack.push(v); onStack.add(v);
+    for (const w of (adj.get(v) ?? [])) {
+      if (!index.has(w)) { strongconnect(w); lowlink.set(v, Math.min(lowlink.get(v)!, lowlink.get(w)!)); }
+      else if (onStack.has(w)) lowlink.set(v, Math.min(lowlink.get(v)!, index.get(w)!));
+    }
+    if (lowlink.get(v) === index.get(v)) {
+      const scc: string[] = [];
+      let w: string;
+      do { w = stack.pop()!; onStack.delete(w); scc.push(w); } while (w !== v);
+      if (scc.length > 1) sccs.push(scc);
+    }
+  }
+  for (const id of ids) { if (!index.has(id)) strongconnect(id); }
+  return sccs;
+}
+
+// BFS forward from all entry points — any connected file not visited is unreachable (dead code)
+function findUnreachableNodes(edges: GraphEdge[], fileNodes: GraphNode[]): GraphNode[] {
+  const hasIncoming = new Set(edges.map((e) => e.target));
+  const entryIds = fileNodes
+    .filter((n) => !hasIncoming.has(n.id) && edges.some((e) => e.source === n.id))
+    .map((n) => n.id);
+  const visited = new Set<string>(entryIds);
+  const queue = [...entryIds];
+  while (queue.length) {
+    const cur = queue.shift()!;
+    for (const e of edges) {
+      if (e.source === cur && !visited.has(e.target)) { visited.add(e.target); queue.push(e.target); }
+    }
+  }
+  const connectedIds = new Set([...edges.map((e) => e.source), ...edges.map((e) => e.target)]);
+  return fileNodes.filter((n) => connectedIds.has(n.id) && !visited.has(n.id));
 }
 
 // ─── Markdown renderer ────────────────────────────────────────────────────────
@@ -488,7 +554,12 @@ function NodeLink({ node, onClick }: { node: GraphNode; onClick: () => void }) {
   );
 }
 
-function SymbolTag({ label, variant }: { label: string; variant: "export" | "fn" | "class" | "type" | "pkg" }) {
+function SymbolTag({ label, variant, onClick, active }: {
+  label: string;
+  variant: "export" | "fn" | "class" | "type" | "pkg";
+  onClick?: () => void;
+  active?: boolean;
+}) {
   const styles = {
     export: "bg-blue-500/10 text-blue-400 border-blue-500/20",
     fn: "bg-purple-500/10 text-purple-400 border-purple-500/20",
@@ -496,8 +567,73 @@ function SymbolTag({ label, variant }: { label: string; variant: "export" | "fn"
     type: "bg-green-500/10 text-green-400 border-green-500/20",
     pkg: "bg-[#1E1E22] text-[#8A8A9A] border-[#2A2A2E]",
   }[variant];
+  if (onClick) {
+    return (
+      <button
+        onClick={onClick}
+        title="Click to find usages"
+        className={`text-[9px] px-1.5 py-0.5 rounded font-mono border transition-all ${styles} ${
+          active ? "ring-1 ring-current brightness-125" : "hover:brightness-125 hover:ring-1 hover:ring-current/40"
+        }`}
+      >
+        {label}
+      </button>
+    );
+  }
   return (
     <span className={`text-[9px] px-1.5 py-0.5 rounded font-mono border ${styles}`}>{label}</span>
+  );
+}
+
+function SymbolUsagePanel({
+  symbol,
+  dependentNodes,
+  onSelect,
+  onClose,
+}: {
+  symbol: { name: string; label: string };
+  dependentNodes: GraphNode[];
+  onSelect?: (id: string) => void;
+  onClose: () => void;
+}) {
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: -4 }}
+      animate={{ opacity: 1, y: 0 }}
+      exit={{ opacity: 0, y: -4 }}
+      transition={{ duration: 0.15 }}
+      className="mt-1.5 bg-[#0B0B12] border border-blue-500/20 rounded-lg overflow-hidden"
+    >
+      <div className="p-2.5">
+        <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center gap-1.5">
+            <Search className="w-3 h-3 text-blue-400 shrink-0" />
+            <span className="text-[9px] text-[#6A6A7A]">Usages of</span>
+            <code className="text-[9px] text-blue-300 font-mono font-semibold">{symbol.label}</code>
+          </div>
+          <button onClick={onClose} className="text-[#3A3A4A] hover:text-white transition-colors">
+            <X className="w-3 h-3" />
+          </button>
+        </div>
+        {dependentNodes.length > 0 ? (
+          <>
+            <p className="text-[9px] text-[#4A4A5A] mb-1.5">
+              {dependentNodes.length} file{dependentNodes.length !== 1 ? "s" : ""} import this module:
+            </p>
+            <div className="flex flex-col gap-0.5 max-h-44 overflow-y-auto">
+              {dependentNodes.map((n) => (
+                <NodeLink key={n.id} node={n} onClick={() => { onSelect?.(n.id); onClose(); }} />
+              ))}
+            </div>
+          </>
+        ) : (
+          <p className="text-[9px] text-[#4A4A5A] py-1">No files in this repo import this module.</p>
+        )}
+        <p className="text-[9px] text-[#2A2A3A] mt-2 leading-relaxed border-t border-[#1A1A22] pt-2">
+          Open a file&apos;s Code tab to confirm which specific symbols it uses.
+        </p>
+      </div>
+    </motion.div>
   );
 }
 
@@ -571,6 +707,7 @@ export function ExplainPanel({
   const [codeLoading, setCodeLoading] = useState(false);
   const [codeError, setCodeError] = useState<string | null>(null);
   const [showAllDeps, setShowAllDeps] = useState(false);
+  const [activeSymbol, setActiveSymbol] = useState<{ name: string; label: string } | null>(null);
 
   // AI state for file/snippet
   const [aiText, setAiText] = useState("");
@@ -600,6 +737,7 @@ export function ExplainPanel({
       setAiMode("file");
       setSnippetText(null);
       setCodeError(null);
+      setActiveSymbol(null);
       if (node?.id && codeCache.current[node.id]) {
         setCode(codeCache.current[node.id]);
       } else {
@@ -865,10 +1003,15 @@ export function ExplainPanel({
     { id: "ai", label: "AI", Icon: Sparkles },
   ];
 
+  // ── Codebase-level metrics (memoized, computed unconditionally) ──────────
+  const allFileNodes = useMemo(() => nodes.filter((n) => n.type !== "folder"), [nodes]);
+  const circularGroups = useMemo(() => findCircularGroups(edges, allFileNodes), [edges, allFileNodes]);
+  const unreachableNodes = useMemo(() => findUnreachableNodes(edges, allFileNodes), [edges, allFileNodes]);
+
   // ── No node selected → Codebase overview ─────────────────────────────────
 
   if (!node) {
-    const fileNodes = nodes.filter((n) => n.type !== "folder");
+    const fileNodes = allFileNodes;
     const hasData = fileNodes.length > 0;
 
     if (!hasData) {
@@ -1126,6 +1269,138 @@ export function ExplainPanel({
             </div>
           )}
 
+          {/* ── Circular dependency chains ─────────────────────────────── */}
+          {circularGroups.length > 0 && (
+            <div className="bg-red-950/20 border border-red-500/20 rounded-lg p-3">
+              <div className="flex items-center gap-1.5 mb-2">
+                <AlertTriangle className="w-3 h-3 text-red-400" />
+                <p className="text-[9px] text-[#4A4A5A] uppercase tracking-widest">
+                  Circular imports
+                  <span className="ml-1.5 text-red-400 font-bold">{circularGroups.length}</span>
+                </p>
+              </div>
+              <div className="space-y-1.5">
+                {circularGroups.slice(0, 5).map((group, i) => (
+                  <div key={i} className="bg-[#0D0A0A] border border-red-500/10 rounded-md px-2.5 py-2">
+                    <div className="flex flex-wrap items-center gap-1">
+                      {group.map((id, j) => {
+                        const n = fileNodes.find((x) => x.id === id);
+                        return (
+                          <span key={id} className="flex items-center gap-1 shrink-0">
+                            <button
+                              onClick={() => onNodeSelect?.(id)}
+                              className="text-[9px] font-mono text-red-300 hover:text-red-200 transition-colors"
+                            >
+                              {n?.label ?? id}
+                            </button>
+                            {j < group.length - 1 && <ArrowRight className="w-2.5 h-2.5 text-red-700 shrink-0" />}
+                          </span>
+                        );
+                      })}
+                      <span className="text-[9px] text-red-700 ml-0.5">↩</span>
+                    </div>
+                  </div>
+                ))}
+                {circularGroups.length > 5 && (
+                  <p className="text-[9px] text-[#4A4A5A]">+{circularGroups.length - 5} more cycles</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ── Coupling health ────────────────────────────────────────────── */}
+          {fileNodes.length > 3 && (() => {
+            const scored = fileNodes
+              .filter((n) => edges.some((e) => e.source === n.id) || edges.some((e) => e.target === n.id))
+              .map((n) => ({ node: n, score: instability(n.id, edges) }))
+              .sort((a, b) => b.score - a.score);
+            const volatile = scored.filter((x) => x.score > 0.7);
+            const stable = scored.filter((x) => x.score < 0.3);
+            const healthScore = scored.length > 0
+              ? Math.round(100 - (volatile.length / scored.length) * 100)
+              : 100;
+            const healthColor = healthScore >= 70 ? "#10b981" : healthScore >= 40 ? "#f59e0b" : "#ef4444";
+            return (
+              <div className="bg-[#111114] border border-[#2A2A2E] rounded-lg p-3">
+                <div className="flex items-center justify-between mb-2.5">
+                  <div className="flex items-center gap-1.5">
+                    <Activity className="w-3 h-3 text-blue-400" />
+                    <p className="text-[9px] text-[#4A4A5A] uppercase tracking-widest">Coupling health</p>
+                  </div>
+                  <span
+                    className="text-[9px] px-1.5 py-0.5 rounded border font-bold tabular-nums"
+                    style={{ color: healthColor, background: `${healthColor}18`, borderColor: `${healthColor}40` }}
+                  >
+                    {healthScore}/100
+                  </span>
+                </div>
+                {volatile.slice(0, 3).length > 0 && (
+                  <div className="mb-2">
+                    <p className="text-[9px] text-red-400/70 mb-1 flex items-center gap-1">
+                      <TrendingUp className="w-2.5 h-2.5" />Volatile (high instability)
+                    </p>
+                    {volatile.slice(0, 3).map(({ node: n, score }) => (
+                      <button
+                        key={n.id}
+                        onClick={() => onNodeSelect?.(n.id)}
+                        className="w-full flex items-center justify-between gap-2 px-2 py-1 hover:bg-[#1A1A1E] rounded transition-colors group"
+                      >
+                        <span className="text-[10px] text-[#C9C9D4] group-hover:text-white truncate font-mono">{n.label}</span>
+                        <span className="text-[9px] text-red-400 shrink-0 tabular-nums">{Math.round(score * 100)}%</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+                {stable.slice(0, 3).length > 0 && (
+                  <div>
+                    <p className="text-[9px] text-green-400/70 mb-1">Stable foundations</p>
+                    {stable.slice(0, 3).map(({ node: n, score }) => (
+                      <button
+                        key={n.id}
+                        onClick={() => onNodeSelect?.(n.id)}
+                        className="w-full flex items-center justify-between gap-2 px-2 py-1 hover:bg-[#1A1A1E] rounded transition-colors group"
+                      >
+                        <span className="text-[10px] text-[#C9C9D4] group-hover:text-white truncate font-mono">{n.label}</span>
+                        <span className="text-[9px] text-green-400 shrink-0 tabular-nums">{Math.round(score * 100)}%</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* ── Unreachable modules ────────────────────────────────────────── */}
+          {unreachableNodes.length > 0 && (
+            <div className="bg-[#111114] border border-yellow-500/20 rounded-lg p-3">
+              <div className="flex items-center gap-1.5 mb-2">
+                <AlertTriangle className="w-3 h-3 text-yellow-400" />
+                <p className="text-[9px] text-[#4A4A5A] uppercase tracking-widest">
+                  Unreachable modules
+                  <span className="ml-1.5 text-yellow-400 font-bold">{unreachableNodes.length}</span>
+                </p>
+              </div>
+              <p className="text-[9px] text-[#6A6A7A] mb-2 leading-relaxed">
+                Not reachable from any entry point — potential dead code.
+              </p>
+              <div className="space-y-0.5">
+                {unreachableNodes.slice(0, 5).map((n) => (
+                  <button
+                    key={n.id}
+                    onClick={() => onNodeSelect?.(n.id)}
+                    className="w-full flex items-center gap-2 px-2 py-1.5 hover:bg-[#1A1A1E] rounded transition-colors group"
+                  >
+                    <FileCode className="w-3 h-3 text-yellow-600 shrink-0" />
+                    <span className="text-[10px] text-[#C9C9D4] group-hover:text-white truncate font-mono">{n.label}</span>
+                  </button>
+                ))}
+                {unreachableNodes.length > 5 && (
+                  <p className="text-[9px] text-[#4A4A5A] px-2">+{unreachableNodes.length - 5} more</p>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* AI Architecture overview */}
           <div className="bg-[#111114] border border-[#2A2A2E] rounded-lg p-3">
             <div className="flex items-center justify-between mb-2">
@@ -1327,6 +1602,42 @@ export function ExplainPanel({
                   </p>
                 </div>
 
+                {/* Coupling instability */}
+                {(() => {
+                  const score = instability(node.id, edges);
+                  const pct = Math.round(score * 100);
+                  const { iLabel, iColor } = score < 0.3
+                    ? { iLabel: "Stable", iColor: "#10b981" }
+                    : score < 0.7
+                    ? { iLabel: "Balanced", iColor: "#f59e0b" }
+                    : { iLabel: "Volatile", iColor: "#ef4444" };
+                  return (
+                    <div className="bg-[#111114] border border-[#2A2A2E] rounded-lg p-3">
+                      <div className="flex justify-between items-center mb-1.5">
+                        <span className="text-[10px] text-[#6A6A7A]">Coupling instability</span>
+                        <span
+                          className="text-[9px] px-1.5 py-0.5 rounded border font-medium"
+                          style={{ color: iColor, background: `${iColor}18`, borderColor: `${iColor}40` }}
+                        >
+                          {iLabel}
+                        </span>
+                      </div>
+                      <div className="h-1.5 bg-[#1A1A1E] rounded-full overflow-hidden mb-1.5">
+                        <motion.div
+                          className="h-full rounded-full"
+                          style={{ background: `linear-gradient(90deg, #10b981, ${iColor})` }}
+                          initial={{ width: 0 }}
+                          animate={{ width: `${pct}%` }}
+                          transition={{ duration: 0.6, ease: "easeOut" }}
+                        />
+                      </div>
+                      <p className="text-[9px] text-[#4A4A5A]">
+                        I={pct}% · {incomingCount} dependents, {outgoingCount} dependencies
+                      </p>
+                    </div>
+                  );
+                })()}
+
                 {/* Role */}
                 <div className="bg-[#111114] border border-[#2A2A2E] rounded-lg p-3">
                   <p className="text-[9px] text-[#4A4A5A] uppercase tracking-widest mb-1.5">Role</p>
@@ -1466,10 +1777,29 @@ export function ExplainPanel({
                     {/* Exports */}
                     {symbols.exports.length > 0 && (
                       <div>
-                        <p className="text-[9px] text-[#4A4A5A] mb-1.5">Exports ({symbols.exports.length})</p>
+                        <p className="text-[9px] text-[#4A4A5A] mb-1.5">
+                          Exports ({symbols.exports.length})
+                          <span className="ml-1.5 text-[#3A3A4A] normal-case tracking-normal">· click to find usages</span>
+                        </p>
                         <div className="flex flex-wrap gap-1">
-                          {symbols.exports.map((e) => <SymbolTag key={e} label={e} variant="export" />)}
+                          {symbols.exports.map((e) => (
+                            <SymbolTag
+                              key={e} label={e} variant="export"
+                              active={activeSymbol?.name === e}
+                              onClick={() => setActiveSymbol(activeSymbol?.name === e ? null : { name: e, label: e })}
+                            />
+                          ))}
                         </div>
+                        <AnimatePresence>
+                          {activeSymbol && symbols.exports.includes(activeSymbol.name) && (
+                            <SymbolUsagePanel
+                              symbol={activeSymbol}
+                              dependentNodes={dependentNodes}
+                              onSelect={onNodeSelect}
+                              onClose={() => setActiveSymbol(null)}
+                            />
+                          )}
+                        </AnimatePresence>
                       </div>
                     )}
 
@@ -1484,10 +1814,17 @@ export function ExplainPanel({
 
                     {symbols.functions.length > 0 && (
                       <div>
-                        <p className="text-[9px] text-[#4A4A5A] mb-1.5">Functions ({symbols.functions.length})</p>
+                        <p className="text-[9px] text-[#4A4A5A] mb-1.5">
+                          Functions ({symbols.functions.length})
+                          <span className="ml-1.5 text-[#3A3A4A] normal-case tracking-normal">· click to find usages</span>
+                        </p>
                         <div className="flex flex-wrap gap-1">
                           {symbols.functions.slice(0, 12).map((f) => (
-                            <SymbolTag key={f} label={`${f}()`} variant="fn" />
+                            <SymbolTag
+                              key={f} label={`${f}()`} variant="fn"
+                              active={activeSymbol?.name === f}
+                              onClick={() => setActiveSymbol(activeSymbol?.name === f ? null : { name: f, label: `${f}()` })}
+                            />
                           ))}
                           {symbols.functions.length > 12 && (
                             <span className="text-[9px] text-[#4A4A5A] self-center">
@@ -1495,6 +1832,16 @@ export function ExplainPanel({
                             </span>
                           )}
                         </div>
+                        <AnimatePresence>
+                          {activeSymbol && symbols.functions.includes(activeSymbol.name) && (
+                            <SymbolUsagePanel
+                              symbol={activeSymbol}
+                              dependentNodes={dependentNodes}
+                              onSelect={onNodeSelect}
+                              onClose={() => setActiveSymbol(null)}
+                            />
+                          )}
+                        </AnimatePresence>
                       </div>
                     )}
 
@@ -1805,10 +2152,29 @@ export function ExplainPanel({
 
                         {symbols.exports.length > 0 && (
                           <div>
-                            <p className="text-[9px] text-[#4A4A5A] mb-1">Exports ({symbols.exports.length})</p>
+                            <p className="text-[9px] text-[#4A4A5A] mb-1">
+                              Exports ({symbols.exports.length})
+                              <span className="ml-1.5 text-[#3A3A4A] normal-case tracking-normal">· click to find usages</span>
+                            </p>
                             <div className="flex flex-wrap gap-1">
-                              {symbols.exports.map((e) => <SymbolTag key={e} label={e} variant="export" />)}
+                              {symbols.exports.map((e) => (
+                                <SymbolTag
+                                  key={e} label={e} variant="export"
+                                  active={activeSymbol?.name === e}
+                                  onClick={() => setActiveSymbol(activeSymbol?.name === e ? null : { name: e, label: e })}
+                                />
+                              ))}
                             </div>
+                            <AnimatePresence>
+                              {activeSymbol && symbols.exports.includes(activeSymbol.name) && (
+                                <SymbolUsagePanel
+                                  symbol={activeSymbol}
+                                  dependentNodes={dependentNodes}
+                                  onSelect={onNodeSelect}
+                                  onClose={() => setActiveSymbol(null)}
+                                />
+                              )}
+                            </AnimatePresence>
                           </div>
                         )}
                         {symbols.classes.length > 0 && (
@@ -1821,10 +2187,17 @@ export function ExplainPanel({
                         )}
                         {symbols.functions.length > 0 && (
                           <div>
-                            <p className="text-[9px] text-[#4A4A5A] mb-1">Functions ({symbols.functions.length})</p>
+                            <p className="text-[9px] text-[#4A4A5A] mb-1">
+                              Functions ({symbols.functions.length})
+                              <span className="ml-1.5 text-[#3A3A4A] normal-case tracking-normal">· click to find usages</span>
+                            </p>
                             <div className="flex flex-wrap gap-1">
                               {symbols.functions.slice(0, 10).map((f) => (
-                                <SymbolTag key={f} label={`${f}()`} variant="fn" />
+                                <SymbolTag
+                                  key={f} label={`${f}()`} variant="fn"
+                                  active={activeSymbol?.name === f}
+                                  onClick={() => setActiveSymbol(activeSymbol?.name === f ? null : { name: f, label: `${f}()` })}
+                                />
                               ))}
                               {symbols.functions.length > 10 && (
                                 <span className="text-[9px] text-[#4A4A5A] self-center">
@@ -1832,6 +2205,16 @@ export function ExplainPanel({
                                 </span>
                               )}
                             </div>
+                            <AnimatePresence>
+                              {activeSymbol && symbols.functions.includes(activeSymbol.name) && (
+                                <SymbolUsagePanel
+                                  symbol={activeSymbol}
+                                  dependentNodes={dependentNodes}
+                                  onSelect={onNodeSelect}
+                                  onClose={() => setActiveSymbol(null)}
+                                />
+                              )}
+                            </AnimatePresence>
                           </div>
                         )}
                         {symbols.types.length > 0 && (
