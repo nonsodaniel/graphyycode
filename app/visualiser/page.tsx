@@ -15,7 +15,6 @@ import Link from "next/link";
 import { GraphView } from "@/components/visualiser/GraphView";
 import { FileTree } from "@/components/visualiser/FileTree";
 import { ExplainPanel } from "@/components/visualiser/ExplainPanel";
-import { GuestLimitModal } from "@/components/visualiser/GuestLimitModal";
 import { ScreenshotButton } from "@/components/visualiser/ScreenshotButton";
 import type { GraphNode, GraphEdge, FileTreeNode } from "@/lib/graph-builder";
 import { guestHistory } from "@/lib/cache";
@@ -63,7 +62,6 @@ function VisualiserContent() {
   const [error, setError] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<GraphNode | null>(null);
   const [selectedFilePath, setSelectedFilePath] = useState<string | null>(null);
-  const [showGuestModal, setShowGuestModal] = useState(false);
   const graphContainerRef = useRef<HTMLDivElement>(null);
 
   const pollAnalysis = useCallback(
@@ -156,11 +154,6 @@ function VisualiserContent() {
       }
 
       if (!res.ok) {
-        if (data.code === "GUEST_LIMIT_REACHED") {
-          setShowGuestModal(true);
-          setStatus("idle");
-          return;
-        }
         setError((data.error as string) ?? "Analysis failed");
         setStatus("failed");
         return;
@@ -398,11 +391,6 @@ function VisualiserContent() {
         </div>
       </div>
 
-      {/* Guest limit modal */}
-      <GuestLimitModal
-        open={showGuestModal}
-        onClose={() => setShowGuestModal(false)}
-      />
     </main>
   );
 }
