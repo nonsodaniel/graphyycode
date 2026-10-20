@@ -1,5 +1,5 @@
 import NextAuth from "next-auth";
-import Google from "next-auth/providers/google";
+import GitHub from "next-auth/providers/github";
 import { PrismaAdapter } from "@auth/prisma-adapter";
 import { db } from "@/lib/db";
 
@@ -7,9 +7,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   trustHost: true,
   adapter: PrismaAdapter(db),
   providers: [
-    Google({
-      clientId: process.env.GOOGLE_CLIENT_ID!,
-      clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+    GitHub({
+      clientId: process.env.GITHUB_CLIENT_ID!,
+      clientSecret: process.env.GITHUB_CLIENT_SECRET!,
     }),
   ],
   callbacks: {
@@ -27,7 +27,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         process.env.ADMIN_EMAIL &&
         user.email === process.env.ADMIN_EMAIL
       ) {
-        await db.user.update({
+        await db.user.updateMany({
           where: { email: user.email },
           data: { role: "ADMIN" },
         });
