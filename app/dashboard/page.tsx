@@ -14,7 +14,7 @@ import {
   RefreshCw,
   HardDrive,
 } from "lucide-react";
-import { Navbar } from "@/components/landing/Navbar";
+import { AppNavbar } from "@/components/shared/AppNavbar";
 import { timeAgo } from "@/lib/time";
 import { guestHistory, type GuestAnalysisRecord } from "@/lib/cache";
 
@@ -182,7 +182,7 @@ export default function DashboardPage() {
 
   return (
     <div className="min-h-screen bg-[#0B0B0C]">
-      <Navbar />
+      <AppNavbar isGuest={isGuest} />
       <main className="max-w-5xl mx-auto px-4 pt-24 pb-16">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">

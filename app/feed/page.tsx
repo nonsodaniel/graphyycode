@@ -12,7 +12,7 @@ import {
   RefreshCw,
 } from "lucide-react";
 import Image from "next/image";
-import { Navbar } from "@/components/landing/Navbar";
+import { AppNavbar } from "@/components/shared/AppNavbar";
 import { timeAgo } from "@/lib/time";
 
 interface ActivityEvent {
@@ -133,7 +133,7 @@ export default function FeedPage() {
 
   return (
     <div className="min-h-screen bg-[#0B0B0C]">
-      <Navbar />
+      <AppNavbar isGuest={false} />
       <main className="max-w-2xl mx-auto px-4 pt-24 pb-16">
         {/* Header */}
         <div className="flex items-center justify-between mb-8">
