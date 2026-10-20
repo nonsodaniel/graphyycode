@@ -17,7 +17,7 @@ export default function SignInPage({
           Sign in to save your analysis history and unlock all features.
         </p>
 
-        <SignInWithGoogle searchParams={searchParams} />
+        <SignInWithGitHub searchParams={searchParams} />
 
         <p className="text-xs text-[#4A4A5A] mt-6">
           By signing in you agree to our{" "}
@@ -30,7 +30,7 @@ export default function SignInPage({
   );
 }
 
-async function SignInWithGoogle({
+async function SignInWithGitHub({
   searchParams,
 }: {
   searchParams: Promise<{ callbackUrl?: string; error?: string }>;
@@ -64,6 +64,14 @@ async function SignInWithGoogle({
           Continue with GitHub
         </button>
       </form>
+      <div className="mt-4">
+        <a
+          href="/dashboard"
+          className="w-full inline-flex items-center justify-center h-11 border border-[#2A2A2E] text-[#8A8A9A] hover:text-white hover:border-[#3A3A3E] rounded-md text-sm font-medium transition-colors"
+        >
+          Continue as guest
+        </a>
+      </div>
     </>
   );
 }
